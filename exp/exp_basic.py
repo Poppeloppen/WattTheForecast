@@ -1,21 +1,27 @@
 import os
 import torch
+import argparse
 
 class Exp_Basic(object):
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.device = self._acquire_device()
         self.model = self._build_model().to(self.device)
         
-    def _build_model(self):
+    def _build_model(self) -> None:
         raise NotImplementedError
         return None ######### NOTE: could probably delete this?? #########
     
     ####################################
     # Modify to also make MPS available
     ####################################
-    def _acquire_device(self):
-        if self.args.use_gpu:
+    def _acquire_device(self) -> torch.device:
+        if self.args.use_mps:
+            os.environ["MPS_VISIBLE_DEVICES"] = str(self.args.mps)
+            device = torch.device("mps")
+            print('Use MPS: mps:{}'.format(self.args.mps))
+            
+        elif self.args.use_gpu:
             os.environ["CUDA_VISIBLE_DEVICES"] = str(
                 self.args.gpu) if not self.args.use_multi_gpu else self.args.devices
             device = torch.device('cuda:{}'.format(self.args.gpu))
