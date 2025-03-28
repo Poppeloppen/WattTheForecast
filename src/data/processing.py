@@ -1,3 +1,4 @@
+import numpy as np
 
 import pandas as pd
 import geopandas as gpd
@@ -56,6 +57,7 @@ def filter_rows_by_col_values (df: pd.DataFrame | gpd.GeoDataFrame,
     
     return df
 
+
 def convert_CET_col_to_UTC(df: pd.DataFrame,
                            cet_col: str = "TIME_CET",
                            utc_col: str = "TIME_UTC") -> pd.DataFrame:
@@ -67,6 +69,25 @@ def convert_CET_col_to_UTC(df: pd.DataFrame,
     return df
     
     
+def convert_col_vals_to_new_cols(df: pd.DataFrame | gpd.GeoDataFrame, 
+                                 col_to_expand: str = "parameterId",
+                                 values_used_in_new_col: str = "value",
+                                 cols_to_keep: list = ["geometry",
+                                                       "cellId",
+                                                       "from",
+                                                       "to",
+                                                       "timeResolution"]
+                                 ) -> pd.DataFrame | gpd.GeoDataFrame:
+    df = df.copy()
+    
+    expanded_df = df.pivot_table(index=cols_to_keep,
+                                 columns=col_to_expand,
+                                 values=values_used_in_new_col).reset_index()
+    
+    expanded_df.columns.name = None
+    return expanded_df
+
+
 
 
 
@@ -83,6 +104,11 @@ def change_windmill_prod_resolution(df: pd.DataFrame, new_res: str) -> pd.DataFr
     df = df.groupby([pd.Grouper(key= "TIME_UTC", freq=new_res), "GSRN"], observed=True).sum().reset_index()
     
     return df
+
+
+def convert_windmill_meta_df_to_gdf(df: pd.DataFrame, crs: str = "EPSG:32632") -> gpd.GeoDataFrame:
+    geometry = gpd.points_from_xy(df["UTM_x"], df["UTM_y"])
+    return convert_df_to_gdf(df, geometry=geometry, crs=crs)
 
 
 def mask_windmills_from_id_list(df: pd.DataFrame, ids: list[str], drop_duplicate_in_col: str | None = None) -> pd.DataFrame:
@@ -108,9 +134,18 @@ def add_polygon_id_to_points_within_polygon(polygons_gdf: gpd.GeoDataFrame,
     return points_gdf
 
 
-#####################################
-# Weather-specific Helper Functions
-#####################################
+def add_wind_dir_cos_and_sin_from_wind_dir_degree(df: pd.DataFrame | gpd.GeoDataFrame,
+                                                  wind_degree_col: str = "",
+                                                  wind_sin_col: str = "",
+                                                  wind_cos_col: str = "") -> pd.DataFrame | gpd.GeoDataFrame:
+    df = df.copy()
+    
+    df[wind_sin_col] = np.sin(np.radians(df[wind_degree_col]))
+    df[wind_cos_col] = np.cos(np.radians(df[wind_degree_col]))
+
+    return df
+
+
 
 
 
