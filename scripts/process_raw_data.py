@@ -42,6 +42,10 @@ from src.data.processing import (
 # HYPER-PARAMETERS:
 ######################
 
+# Paths for storing the interim data
+INTERIM_YEARLY_WEATHER_OBS_PATH = "../data/interim/weather/"
+INTERIM_COMBINED_WINDMILL_PATH = "../data/interim/windmill/"
+
 # Only use windmills within the weather observation grid cells specified here:
 WEATHER_OBS_CELLIDS_OF_INTEREST = [ #could be useful to inspect map in ../notbooks/init_EDA.ipynb
     "10km_629_45",
@@ -49,26 +53,6 @@ WEATHER_OBS_CELLIDS_OF_INTEREST = [ #could be useful to inspect map in ../notboo
     "10km_628_45",
     "10km_628_46",
 ]
-
-INTERIM_YEARLY_WEATHER_OBS_PATH = "../data/interim/weather/"
-
-INTERIM_COMBINED_WINDMILL_PATH = "../data/interim/windmill/"
-
-
-SINGLE_WEATHER_FEATURE_OF_INTEREST = [
-    "mean_wind_speed"
-]
-
-SUBSET_WEATHER_FEATURES_OF_INTEREST = [
-    "mean_temp",
-    "mean_pressure",
-    "mean_relative_hum",
-    "mean_wind_speed",
-    "mean_wind_dir",
-    "max_wind_speed_10min"
-]
-
-
 
 RELEVANT_WINDMILL_META_DATA_COLS = [
     "GSRN",             #windmill id
@@ -96,129 +80,14 @@ WINDMILL_PROD_RESOLUTION = "1h"
 COMBINED_WINDMILL_BASE_PATH = "../data/interim/windmill/"
 
 
-#######################
-## Load the raw data
-#######################
-#
-## Windmill data
-#print("Loading raw windmill data...")
-#windmill_meta_df = get_raw_windmill_meta_data_df()
-#windmill_prod_2018_df = get_raw_windmill_prod_data_df(year=2018)
-#windmill_prod_2019_df = get_raw_windmill_prod_data_df(year=2019)
-#
-## Weather data
-#print("Loading raw weather observation data...")
-#weather_obs_df = get_raw_daily_weather_obs_df()
-#weather_obs_grid_gdf = extract_weather_obs_grid_as_gdf(weather_obs_df)
-#
-#
-#
-#####################################################################
-## Masking windmills within specified weather observation grid cells
-#####################################################################
-#
-#print("Finding windmills within specified grid cells")
-## Mask the weather obs grid and find bbox of the selected grid cells
-#grid_mask = weather_obs_grid_gdf["cellId"].isin(WEATHER_OBS_CELLIDS_OF_INTEREST)
-#weather_obs_grid_of_interest_gdf = weather_obs_grid_gdf[grid_mask]
-#bbox_of_weather_obs_of_interest = bbox_of_gdf(weather_obs_grid_of_interest_gdf, crs="EPSG:4326")
-#
-## Convert windmill meta data to gpd.GeoDataFrame
-#geometry = gpd.points_from_xy(windmill_meta_df["UTM_x"], windmill_meta_df["UTM_y"])
-#windmill_meta_gdf = convert_df_to_gdf(windmill_meta_df, geometry=geometry, crs="EPSG:32632")
-#
-## Find windmills within the weather observation grid cells of interest
-#bbox_of_weather_obs_of_interest = bbox_of_weather_obs_of_interest.to_crs(windmill_meta_gdf.crs) #ensure the two GeoDataFrames use same crs
-#windmills_within_weather_grid_gdf = windmill_meta_gdf[windmill_meta_gdf.geometry.within(bbox_of_weather_obs_of_interest.geometry.iloc[0])]
-#print("Initial shape of windmill meta df:", windmills_within_weather_grid_gdf.shape)
-#
-## Add weather grid id to the windmills within that grid
-#windmills_within_weather_grid_gdf = add_polygon_id_to_points_within_polygon(polygons_gdf = weather_obs_grid_of_interest_gdf,
-#                                                           points_gdf = windmills_within_weather_grid_gdf,
-#                                                           id_col="cellId")
-#
-## Mask windmill data based on id (GSRN) of windmills within bbox of weather observations of interest
-#print("Masking the windmill meta and production datasets")
-#ids_of_windmills_within_weather_obs_bbox = list(windmills_within_weather_grid_gdf["GSRN"].unique())
-#masked_windmill_meta_data_df = mask_windmills_from_id_list(df = windmills_within_weather_grid_gdf, 
-#                                                           ids = ids_of_windmills_within_weather_obs_bbox,
-#                                                           drop_duplicate_in_col="GSRN")
-#masked_windmill_prod_2018_df = mask_windmills_from_id_list(df = windmill_prod_2018_df,
-#                                                  ids = ids_of_windmills_within_weather_obs_bbox)
-#masked_windmill_prod_2019_df = mask_windmills_from_id_list(df = windmill_prod_2019_df,
-#                                                  ids = ids_of_windmills_within_weather_obs_bbox)
-#
-#
-#print("Shape of windmill meta data after dropping duplicate rows (GSRN column)")
-#print("meta", masked_windmill_meta_data_df.shape)
-#print("2018", masked_windmill_prod_2018_df.shape)
-#print("2019", masked_windmill_prod_2019_df.shape)
-#
-#
-#
-#############################
-## Process the windmill data
-#############################
-#
-## Change dtypes of the windmill prod data (the meta data comes with correct dtypes)
-#print("Changing dtypes of windmill production data")
-#masked_windmill_prod_2018_df = change_df_cols_to_datetime(masked_windmill_prod_2018_df, ["TIME_CET"])
-#masked_windmill_prod_2018_df = change_df_col_dtypes(masked_windmill_prod_2018_df, {"GSRN": "str", "TS_ID": "category", "VAERDI": "float"})
-#masked_windmill_prod_2019_df = change_df_cols_to_datetime(masked_windmill_prod_2019_df, ["TIME_CET"])
-#masked_windmill_prod_2019_df = change_df_col_dtypes(masked_windmill_prod_2019_df, {"GSRN": "str", "TS_ID": "category", "VAERDI": "float"})
-#
-## Add UTC timezone column to production data:
-#masked_windmill_prod_2018_df = add_new_timezone_col_to_df(masked_windmill_prod_2018_df,
-#                                                            old_col_name="TIME_CET",
-#                                                            new_col_name="TIME_UTC")
-#masked_windmill_prod_2019_df = add_new_timezone_col_to_df(masked_windmill_prod_2019_df,
-#                                                            old_col_name="TIME_CET",
-#                                                            new_col_name="TIME_UTC")
-#
-## Select relevant features
-#print("Selecting relevant features")
-#masked_windmill_meta_data_df = extract_subset_of_df_columns(masked_windmill_meta_data_df, cols=RELEVANT_WINDMILL_META_DATA_COLS)
-#masked_windmill_prod_2018_df = extract_subset_of_df_columns(masked_windmill_prod_2018_df, cols=RELEVANT_WINDMILL_PROD_DATA_COLS)
-#masked_windmill_prod_2019_df = extract_subset_of_df_columns(masked_windmill_prod_2019_df, cols=RELEVANT_WINDMILL_PROD_DATA_COLS)
-#
-## Change resolution of production data
-#print("Change resolution of production data to")
-#masked_windmill_prod_2018_df = change_windmill_prod_resolution(masked_windmill_prod_2018_df, "1h")
-#masked_windmill_prod_2019_df = change_windmill_prod_resolution(masked_windmill_prod_2019_df, "1h")
-#
-#
-#
-##################################
-## Combine windmill data and save
-##################################
-#
-## Joining windmill datasets
-#print("Joining windmill datasets")
-#combined_2018_windmill_df = pd.merge(masked_windmill_prod_2018_df, masked_windmill_meta_data_df, on="GSRN", how="left")
-#combined_2019_windmill_df = pd.merge(masked_windmill_prod_2019_df, masked_windmill_meta_data_df, on="GSRN", how="left")
-#
-## Convert the windmill data to GeoDataFrame (to ensure it got a geometry column)
-#print("Converting the data to gpd.GeoDataFrame")
-#geometry = gpd.points_from_xy(combined_2018_windmill_df["UTM_x"], combined_2018_windmill_df["UTM_y"])
-#combined_2018_windmill_gdf = convert_df_to_gdf(combined_2018_windmill_df, geometry=geometry, crs="EPSG:32632")
-#geometry = gpd.points_from_xy(combined_2019_windmill_df["UTM_x"], combined_2019_windmill_df["UTM_y"])
-#combined_2019_windmill_gdf = convert_df_to_gdf(combined_2019_windmill_df, geometry=geometry, crs="EPSG:32632")
-#
-#print("Saving the windmill data")
-#os.path.join(COMBINED_WINDMILL_BASE_PATH, "2018.parquet")
-#combined_2018_windmill_gdf.to_parquet(os.path.join(COMBINED_WINDMILL_BASE_PATH, "2018.parquet"))
-#combined_2019_windmill_gdf.to_parquet(os.path.join(COMBINED_WINDMILL_BASE_PATH, "2019.parquet"))
 
+###################
+# Helper functions 
+###################
 
-
-
-
-
-
-
-############
+####
 # Windmill 
-############
+####
 
 def mask_windmill_data(prod_df: gpd.GeoDataFrame,
                        meta_df: pd.DataFrame | gpd.GeoDataFrame,
@@ -247,7 +116,6 @@ def mask_windmill_data(prod_df: gpd.GeoDataFrame,
                                                     ids = ids_of_windmills_within_weather_obs_bbox)
     
     return masked_windmill_prod_df, masked_windmill_meta_data_df
-    
         
     
 def process_windmill_prod_data(df: pd.DataFrame | gpd.GeoDataFrame,
@@ -283,9 +151,9 @@ def combine_and_save_windmill_data(prod_df: pd.DataFrame | gpd.GeoDataFrame,
 
 
 
-############
+####
 # Weather 
-############
+####
 
 def mask_weather_data(df: pd.DataFrame,
                       cellIds_of_interest: str,
@@ -306,7 +174,6 @@ def mask_weather_data(df: pd.DataFrame,
                                           values_of_interest=weather_features_of_interest)
 
     return df_masked
-
 
 
 def process_weather_data(df: pd.DataFrame) -> gpd.GeoDataFrame:
@@ -330,24 +197,22 @@ def process_weather_data(df: pd.DataFrame) -> gpd.GeoDataFrame:
 
 
 
-
-
-
-
-
-
+#########################
+# Main / driver function
+#########################
 
 def main():
     
-    years = [2018]#, 2019]    
+    years = [2018]#, 2019] --> have yet to download 2019 weather data (HPC is down)   
     
+    #Loaded outside for-loop for efficiency --> does not depend on year
     windmill_meta_df = get_raw_windmill_meta_data_df()
     windmill_meta_gdf = convert_windmill_meta_df_to_gdf(windmill_meta_df)
     
     for year in years:
             
         ###########
-        # WEATHER
+        # Process weather data
         ###########
         print(f"Processing weather data from {year}")
         all_yearly_dates = get_available_weather_obs_dates(year=year)
@@ -378,7 +243,7 @@ def main():
         
         
         ###########
-        # WINDMILL
+        # Process windmill data
         ###########
         print(f"Processing windmill data from {year}")
         print("* Load production data")
@@ -404,7 +269,7 @@ def main():
                                        )
         
         
-        break
+        break #Remove when 2019 data is downloaded
     
 if __name__ == "__main__":
     main()
