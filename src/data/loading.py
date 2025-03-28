@@ -25,18 +25,20 @@ def parquet_to_gdf(path: str) -> gpd.GeoDataFrame:
 def get_raw_windmill_meta_data_df(path: str = "../data/raw/windmill/masterdatawind.parquet") -> pd.DataFrame:
     return parquet_to_df(path)
     
-    
 def get_raw_windmill_prod_data_df(base_path: str = "../data/raw/windmill/settlement/", year: int = 2018) -> pd.DataFrame:
     assert year in [2018, 2019], "production data is only available from 2018 and 2019"
     full_windmill_prod_path = os.path.join(base_path, f"{year}.parquet")    
     return parquet_to_df(full_windmill_prod_path)
     
-    
 def get_interim_windmill_data_gdf(base_path: str = "../data/interim/windmill/", year: int = 2018) -> gpd.GeoDataFrame:
     assert year in [2018, 2019]
-    full_windmill_path = os.path.join(base_path, f"{year}.parquet")
+    full_windmill_path = os.path.join(base_path, f"windmill_{year}.parquet")
     return parquet_to_gdf(full_windmill_path)
 
+def get_interim_weather_data_gdf(base_path: str = "../data/interim/weather/", year: int = 2018) -> gpd.GeoDataFrame:
+    assert year in [2018, 2019]
+    full_weather_path = os.path.join(base_path, f"weather_{year}.parquet")
+    return parquet_to_gdf(full_weather_path)
 
 
 
