@@ -31,6 +31,18 @@ SUBSET_FEATURES = [
     "max_wind_speed_10min"
 ]
 
+##### NOTE: some of these could prove useful -> need encoding though
+REDUNDANT_FEATURES = [
+    "to",
+    "from",
+    "geometry_x",
+    "geometry_y",
+    "cellId",
+    "Placement",
+    "Turbine_type",
+    "timeResolution"
+]
+
 PROCESSED_ROOT_PATH = "../data/processed/"
 
 TRAIN_VAL_TEST_SPLIT = [0.6, 0.1, 0.3]
@@ -103,16 +115,27 @@ def reorder_col_order(df: pd.DataFrame | gpd.GeoDataFrame):
     
     return df.copy()
 
+
+def remove_level_n_cols_from_multiindex_df(df: pd.DataFrame,
+                                           cols_to_remove: list[str],
+                                           header_level: int = 0)-> pd.DataFrame:
+    
+    df = df.loc[:, ~df.columns.get_level_values(header_level).isin(cols_to_remove)]
+    
+    return df.copy()
+
         
 def process_data(df: pd.DataFrame | gpd.GeoDataFrame,
                          selected_features: list[str],
+                         redundant_features: list[str],
                          p: int = 0.75) -> pd.DataFrame | gpd.GeoDataFrame:
     
     df = remove_windmills_with_less_than_p_percent_production_data(df, p)
     
     df = select_features(df, selected_features)
     
-    #df = remove_redundant_columns(df, redundant_cols) #
+    ##### NOTE: some of these could prove useful -> need encoding though
+    df = remove_level_n_cols_from_multiindex_df(df, cols_to_remove=redundant_features)
     
     df = reorder_col_order(df)
     
@@ -175,15 +198,18 @@ def main():
         
         if dataset_type == "one_feature":
             final_df = process_data(df, 
-                              selected_features = ONE_FEATURE)
+                              selected_features = ONE_FEATURE,
+                              redundant_features = REDUNDANT_FEATURES)
             
         elif dataset_type == "subset_features":
             final_df = process_data(df,
-                              selected_features = SUBSET_FEATURES)
+                              selected_features = SUBSET_FEATURES,
+                              redundant_features = REDUNDANT_FEATURES)
         
         elif dataset_type == "all_features":
             final_df = process_data(df,
-                              selected_features = list(df.columns.get_level_values(0).unique()))
+                              selected_features = list(df.columns.get_level_values(0).unique()),
+                              redundant_features = REDUNDANT_FEATURES)
             
         #Split data 
         train_df, val_df, test_df = train_val_test_fraction_split(final_df, split=TRAIN_VAL_TEST_SPLIT)
