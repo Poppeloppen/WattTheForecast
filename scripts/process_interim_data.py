@@ -23,9 +23,12 @@ ONE_FEATURE = [
 ]
 
 SUBSET_FEATURES = [
+    "mean_temp",
+    "mean_pressure",
+    "mean_relative_hum",
     "mean_wind_speed",
-    "Rotor_diameter",
-    "mean_relative_hum"
+    "mean_wind_dir", #this is converted to cos_deg and sin_deg in FFT paper
+    "max_wind_speed_10min"
 ]
 
 PROCESSED_ROOT_PATH = "../data/processed/"
