@@ -215,6 +215,9 @@ def process_weather_data(df: pd.DataFrame) -> gpd.GeoDataFrame:
 
 def main():
     
+    if CREATE_SUBSET_DATA:
+        print("CREATING SMALL SUBSET DATASET...")
+    
     years = [2018, 2019] if not CREATE_SUBSET_DATA else [2018] # --> have yet to download 2019 weather data (HPC is down)   
     
     #Loaded outside for-loop for efficiency --> does not depend on year
@@ -251,7 +254,7 @@ def main():
         
         #save yearly weather data
         print("* Saving the yearly weather observations")
-        weather_file_name = "weather_{year}.parquet" if not CREATE_SUBSET_DATA else "weather_subset_{year}.parquet"
+        weather_file_name = f"weather_{year}.parquet" if not CREATE_SUBSET_DATA else f"weather_subset_{year}.parquet"
         weather_storage_path = os.path.join(INTERIM_YEARLY_WEATHER_OBS_PATH, weather_file_name)
         combined_yearly_weather_gdf.to_parquet(weather_storage_path)
         
@@ -276,7 +279,7 @@ def main():
                                                              relevant_cols=RELEVANT_WINDMILL_PROD_DATA_COLS)
         
         print("* Saving the combined windmill data")
-        windmill_file_name = "windmill_{year}.parquet" if not CREATE_SUBSET_DATA else "windmill_subset_{year}.parquet"
+        windmill_file_name = f"windmill_{year}.parquet" if not CREATE_SUBSET_DATA else f"windmill_subset_{year}.parquet"
         windmill_storage_path = os.path.join(INTERIM_COMBINED_WINDMILL_PATH, windmill_file_name)
         combine_and_save_windmill_data(prod_df = masked_windmill_prod_df,
                                        meta_df = masked_windmill_meta_df,
