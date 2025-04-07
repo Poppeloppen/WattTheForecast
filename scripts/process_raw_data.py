@@ -42,17 +42,32 @@ from src.data.processing import (
 # HYPER-PARAMETERS:
 ######################
 
+#CREATE SMALL VERSION OF DATA?
+CREATE_SUBSET_DATA = True #if True - only store weather data for one cell AND only use first 31 days worth of data
+
+
 # Paths for storing the interim data
-INTERIM_YEARLY_WEATHER_OBS_PATH = "../data/interim/weather/"
-INTERIM_COMBINED_WINDMILL_PATH = "../data/interim/windmill/"
+if CREATE_SUBSET_DATA:
+    INTERIM_YEARLY_WEATHER_OBS_PATH = "../data/interim/subset/weather/"
+    INTERIM_COMBINED_WINDMILL_PATH = "../data/interim/subset/windmill/"
+else:
+    INTERIM_YEARLY_WEATHER_OBS_PATH = "../data/interim/weather/"
+    INTERIM_COMBINED_WINDMILL_PATH = "../data/interim/windmill/"
+    
+
 
 # Only use windmills within the weather observation grid cells specified here:
-WEATHER_OBS_CELLIDS_OF_INTEREST = [ #could be useful to inspect map in ../notbooks/init_EDA.ipynb
-    "10km_629_45",
-    "10km_629_46",
-    "10km_628_45",
-    "10km_628_46",
-]
+if CREATE_SUBSET_DATA:  
+    WEATHER_OBS_CELLIDS_OF_INTEREST = [ #could be useful to inspect map in ../notbooks/init_EDA.ipynb
+        "10km_629_46",
+    ]
+else:
+    WEATHER_OBS_CELLIDS_OF_INTEREST = [ #could be useful to inspect map in ../notbooks/init_EDA.ipynb
+        "10km_629_45",
+        "10km_629_46",
+        "10km_628_45",
+        "10km_628_46",
+    ]
 
 RELEVANT_WINDMILL_META_DATA_COLS = [
     "GSRN",             #windmill id
@@ -75,9 +90,6 @@ RELEVANT_WINDMILL_PROD_DATA_COLS = [ #Note: this really shouldn't be changed, al
 
 # The wanted resolution of the production data (minimum is 15min)
 WINDMILL_PROD_RESOLUTION = "1h"
-
-# The path where the combined windmill data for 2018 and 2019 will be stored
-COMBINED_WINDMILL_BASE_PATH = "../data/interim/windmill/"
 
 
 
@@ -203,7 +215,7 @@ def process_weather_data(df: pd.DataFrame) -> gpd.GeoDataFrame:
 
 def main():
     
-    years = [2018]#, 2019] --> have yet to download 2019 weather data (HPC is down)   
+    years = [2018, 2019] if not CREATE_SUBSET_DATA else [2018] # --> have yet to download 2019 weather data (HPC is down)   
     
     #Loaded outside for-loop for efficiency --> does not depend on year
     windmill_meta_df = get_raw_windmill_meta_data_df()
@@ -215,11 +227,13 @@ def main():
         # Process weather data
         ###########
         print(f"Processing weather data from {year}")
-        all_yearly_dates = get_available_weather_obs_dates(year=year)
+        all_dates = get_available_weather_obs_dates(year=year)
+        all_dates = all_dates if not CREATE_SUBSET_DATA else all_dates[:31]
+        
         all_weather_gdfs = []
         
         print("* Concatenating daily weather observations...")
-        for date in tqdm(all_yearly_dates):
+        for date in tqdm(all_dates):
             #load daily weather observation
             weather_df = get_raw_daily_weather_obs_df(date=date)
             
@@ -237,7 +251,8 @@ def main():
         
         #save yearly weather data
         print("* Saving the yearly weather observations")
-        weather_storage_path = os.path.join(INTERIM_YEARLY_WEATHER_OBS_PATH, f"weather_{year}.parquet")
+        weather_file_name = "weather_{year}.parquet" if not CREATE_SUBSET_DATA else "weather_subset_{year}.parquet"
+        weather_storage_path = os.path.join(INTERIM_YEARLY_WEATHER_OBS_PATH, weather_file_name)
         combined_yearly_weather_gdf.to_parquet(weather_storage_path)
         
         
@@ -261,7 +276,8 @@ def main():
                                                              relevant_cols=RELEVANT_WINDMILL_PROD_DATA_COLS)
         
         print("* Saving the combined windmill data")
-        windmill_storage_path = os.path.join(INTERIM_COMBINED_WINDMILL_PATH, f"windmill_{year}.parquet")
+        windmill_file_name = "windmill_{year}.parquet" if not CREATE_SUBSET_DATA else "windmill_subset_{year}.parquet"
+        windmill_storage_path = os.path.join(INTERIM_COMBINED_WINDMILL_PATH, windmill_file_name)
         combine_and_save_windmill_data(prod_df = masked_windmill_prod_df,
                                        meta_df = masked_windmill_meta_df,
                                        path = windmill_storage_path,
@@ -269,7 +285,7 @@ def main():
                                        )
         
         
-        break #Remove when 2019 data is downloaded
+        #break #Remove when 2019 data is downloaded
     
 if __name__ == "__main__":
     main()
