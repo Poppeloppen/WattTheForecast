@@ -17,6 +17,9 @@ from src.data.loading import (
     get_interim_windmill_data_gdf
 )
 
+#Flag: should the processing happen to the small subset dataset (only one weather cell AND 31 days)
+ONLY_PROCESS_SMALL_SUBSET_DATA = True
+
 
 ONE_FEATURE = [
     "mean_wind_speed"
@@ -124,6 +127,16 @@ def remove_level_n_cols_from_multiindex_df(df: pd.DataFrame,
     
     return df.copy()
 
+
+def interpolate_missing_vals(df: pd.DataFrame) -> pd.DataFrame:
+    
+    #note only "linear" method is supported for multiinded
+        # the limit_area=inside and limit=1 ensures that only values surrounded by valid values are filled
+        # and that no consecutive nan rows are filled
+    df = df.interpolate(method='linear', limit_area="inside", limit=1)
+    
+    return df
+
         
 def process_data(df: pd.DataFrame | gpd.GeoDataFrame,
                          selected_features: list[str],
@@ -133,9 +146,11 @@ def process_data(df: pd.DataFrame | gpd.GeoDataFrame,
     df = remove_windmills_with_less_than_p_percent_production_data(df, p)
     
     df = select_features(df, selected_features)
-    
+     
     ##### NOTE: some of these could prove useful -> need encoding though
     df = remove_level_n_cols_from_multiindex_df(df, cols_to_remove=redundant_features)
+    
+    df = interpolate_missing_vals(df)
     
     df = reorder_col_order(df)
     
@@ -174,8 +189,15 @@ def train_val_test_fraction_split(df: pd.DataFrame | gpd.GeoDataFrame,
 def main():
     # Load data
     print("* LOADING DATA")
-    windmill_gdf = get_interim_windmill_data_gdf()
-    weather_gdf = get_interim_weather_data_gdf()
+    
+    windmill_interim_base_path = "../data/interim/windmill/" if not ONLY_PROCESS_SMALL_SUBSET_DATA else "../data/interim/subset/windmill/"
+    weather_interim_base_path = "../data/interim/weather/" if not ONLY_PROCESS_SMALL_SUBSET_DATA else "../data/interim/subset/weather/"
+    
+    windmill_file_name = "windmill_subset_2018.parquet"
+    weather_file_name = "weather_subset_2018.parquet"
+    
+    windmill_gdf = get_interim_windmill_data_gdf(base_path = windmill_interim_base_path, file_name=windmill_file_name)
+    weather_gdf = get_interim_weather_data_gdf(base_path = weather_interim_base_path, file_name=weather_file_name)
     
     #merge datasets into a single df
     print("* MERGING DATA")
@@ -191,26 +213,31 @@ def main():
     df = wrangle_df(merged_df)
         
     #Process data depending on # of features to use
-    print("* CREATING THREE DATASETS; 'one_feature', 'subset_features', 'all_features'")
-    dataset_types = ["one_feature", "subset_features", "all_features"]
+    print("* CREATING THREE DATASETS; 'one_feature', 'subset_features', 'all_features'" if not ONLY_PROCESS_SMALL_SUBSET_DATA else "* CREATING SMALL SUBSET DATASET")
+    dataset_types = ["one_feature", "subset_features", "all_features"] if not ONLY_PROCESS_SMALL_SUBSET_DATA else ["subset_dataset"]
     for dataset_type in dataset_types:
         print("\t * ",dataset_type)
         
         if dataset_type == "one_feature":
             final_df = process_data(df, 
-                              selected_features = ONE_FEATURE,
-                              redundant_features = REDUNDANT_FEATURES)
+                                    selected_features = ONE_FEATURE,
+                                    redundant_features = REDUNDANT_FEATURES)
             
         elif dataset_type == "subset_features":
             final_df = process_data(df,
-                              selected_features = SUBSET_FEATURES,
-                              redundant_features = REDUNDANT_FEATURES)
+                                    selected_features = SUBSET_FEATURES,
+                                    redundant_features = REDUNDANT_FEATURES)
         
         elif dataset_type == "all_features":
             final_df = process_data(df,
-                              selected_features = list(df.columns.get_level_values(0).unique()),
-                              redundant_features = REDUNDANT_FEATURES)
-            
+                                    selected_features = list(df.columns.get_level_values(0).unique()),
+                                    redundant_features = REDUNDANT_FEATURES)
+        
+        else:
+            final_df = process_data(df,
+                                    selected_features = list(df.columns.get_level_values(0).unique()),
+                                    redundant_features = REDUNDANT_FEATURES)
+        
         #Split data 
         train_df, val_df, test_df = train_val_test_fraction_split(final_df, split=TRAIN_VAL_TEST_SPLIT)
         
