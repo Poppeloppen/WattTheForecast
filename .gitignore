@@ -175,3 +175,6 @@ cython_debug/
 
 # Exclude data
 data/*
+
+# macOS system files
+.DS_Store
