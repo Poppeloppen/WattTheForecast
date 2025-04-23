@@ -3,6 +3,7 @@ import geopandas as gpd
 from tqdm import tqdm
 import os
 
+import numpy as np
 import pandas as pd
 from shapely.geometry import Polygon
 
@@ -43,23 +44,23 @@ from src.data.processing import (
 ######################
 
 #CREATE SMALL VERSION OF DATA?
-CREATE_SUBSET_DATA = True #if True - only store weather data for one cell AND only use first 31 days worth of data
+CREATE_SUBSET_DATA = False #if True - only store weather data for one cell AND only use first 31 days worth of data
 
 
 # Paths for storing the interim data
 if CREATE_SUBSET_DATA:
-    INTERIM_YEARLY_WEATHER_OBS_PATH = "../data/interim/subset/weather/"
-    INTERIM_COMBINED_WINDMILL_PATH = "../data/interim/subset/windmill/"
+    INTERIM_YEARLY_WEATHER_OBS_PATH = "../data/interim/sample_dataset/weather/"
+    INTERIM_COMBINED_WINDMILL_PATH = "../data/interim/sample_dataset/windmill/"
 else:
-    INTERIM_YEARLY_WEATHER_OBS_PATH = "../data/interim/weather/"
-    INTERIM_COMBINED_WINDMILL_PATH = "../data/interim/windmill/"
+    INTERIM_YEARLY_WEATHER_OBS_PATH = "../data/interim/full_dataset/weather/"
+    INTERIM_COMBINED_WINDMILL_PATH = "../data/interim/full_dataset/windmill/"
     
 
 
 # Only use windmills within the weather observation grid cells specified here:
 if CREATE_SUBSET_DATA:  
     WEATHER_OBS_CELLIDS_OF_INTEREST = [ #could be useful to inspect map in ../notbooks/init_EDA.ipynb
-        "10km_629_46",
+        "10km_629_45",
     ]
 else:
     WEATHER_OBS_CELLIDS_OF_INTEREST = [ #could be useful to inspect map in ../notbooks/init_EDA.ipynb
@@ -72,12 +73,12 @@ else:
 RELEVANT_WINDMILL_META_DATA_COLS = [
     "GSRN",             #windmill id
     "cellId",           #the polygon id of the weather obs grid cell which the windmill reside in
-    "Turbine_type",     #...
-    "Placement",        #...
+    #"Turbine_type",     #...
+    #"Placement",        #...
     "UTM_x",            #...
     "UTM_y",            #...
-    "Capacity_kw",      #
-    "Rotor_diameter",   #
+    #"Capacity_kw",      #
+    #"Rotor_diameter",   #
 ]
 
 RELEVANT_WINDMILL_PROD_DATA_COLS = [ #Note: this really shouldn't be changed, all are needed
@@ -145,19 +146,26 @@ def process_windmill_prod_data(df: pd.DataFrame | gpd.GeoDataFrame,
 
 def combine_and_save_windmill_data(prod_df: pd.DataFrame | gpd.GeoDataFrame,
                                    meta_df: pd.DataFrame | gpd.GeoDataFrame,
-                                   path: str,
+                                   storage_path: str,
+                                   file_name: str,
                                    as_gdf: bool=True,
                                    crs: str = "EPSG:32632") -> None:
     
     combined_windmill_df = pd.merge(prod_df, meta_df, on="GSRN", how="left")
     
+    #create directory if it does not already exists
+    if not os.path.exists(storage_path):
+        os.makedirs(storage_path)
+    
+    windmill_storage_path = os.path.join(INTERIM_COMBINED_WINDMILL_PATH, file_name)
+    
     if as_gdf:
         geometry = gpd.points_from_xy(combined_windmill_df["UTM_x"], combined_windmill_df["UTM_y"])
         combined_windmill_gdf = convert_df_to_gdf(combined_windmill_df, geometry=geometry, crs=crs)
-        combined_windmill_gdf.to_parquet(path)
+        combined_windmill_gdf.to_parquet(windmill_storage_path)
     
     else:
-        combined_windmill_df.to_parquet(path)
+        combined_windmill_df.to_parquet(windmill_storage_path)
         
     return
 
@@ -188,6 +196,16 @@ def mask_weather_data(df: pd.DataFrame,
     return df_masked
 
 
+def encode_wind_dir_as_sin_and_cos(df: pd.DataFrame | gpd.GeoDataFrame) -> pd.DataFrame | gpd.GeoDataFrame:
+    assert "mean_wind_dir" in df.columns, '"mean_wind_dir" is not a column in the provided df'
+    
+    #Create two new columns with wind direction encoded as sine and consine
+    df["mean_wind_dir_sin"] = np.sin(df["mean_wind_dir"] * (np.pi / 180))
+    df["mean_wind_dir_cos"] = np.cos(df["mean_wind_dir"] * (np.pi / 180))
+    
+    return df.copy()
+
+
 def process_weather_data(df: pd.DataFrame) -> gpd.GeoDataFrame:
     
     #convert time related columns to datetime       
@@ -204,6 +222,9 @@ def process_weather_data(df: pd.DataFrame) -> gpd.GeoDataFrame:
 
     #have to do this again... (previous function converts to reguælar df) 
     weather_gdf = convert_df_to_gdf(df=weather_gdf, geometry="geometry", crs="EPSG:4326")
+
+    #encode wind dir
+    weather_gdf = encode_wind_dir_as_sin_and_cos(weather_gdf)
 
     return weather_gdf
 
@@ -256,6 +277,10 @@ def main():
         print("* Saving the yearly weather observations")
         weather_file_name = f"weather_{year}.parquet" if not CREATE_SUBSET_DATA else f"weather_subset_{year}.parquet"
         weather_storage_path = os.path.join(INTERIM_YEARLY_WEATHER_OBS_PATH, weather_file_name)
+        
+        if not os.path.exists(INTERIM_YEARLY_WEATHER_OBS_PATH):
+            os.makedirs(INTERIM_YEARLY_WEATHER_OBS_PATH)
+        
         combined_yearly_weather_gdf.to_parquet(weather_storage_path)
         
         
@@ -280,15 +305,15 @@ def main():
         
         print("* Saving the combined windmill data")
         windmill_file_name = f"windmill_{year}.parquet" if not CREATE_SUBSET_DATA else f"windmill_subset_{year}.parquet"
-        windmill_storage_path = os.path.join(INTERIM_COMBINED_WINDMILL_PATH, windmill_file_name)
         combine_and_save_windmill_data(prod_df = masked_windmill_prod_df,
                                        meta_df = masked_windmill_meta_df,
-                                       path = windmill_storage_path,
+                                       storage_path = INTERIM_COMBINED_WINDMILL_PATH,
+                                       file_name = windmill_file_name,
                                        as_gdf=True,
                                        )
         
         
-        #break #Remove when 2019 data is downloaded
+        break #Remove when 2019 data is downloaded
     
 if __name__ == "__main__":
     main()

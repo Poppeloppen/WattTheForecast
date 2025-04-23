@@ -12,11 +12,13 @@ from src.data.loading import(
 )
 
 
-#Path from where to load the windmill data
-WINDMILL_DATA_PATH = "../data/interim/windmill"
+CREATE_EDGE_DATA_FOR_SAMPLE_DATASET = True
 
 #Path to store the edge_feats data
-EDGE_FEATS_STORAGE_PATH = "../data/processed/"
+EDGE_FEATS_STORAGE_PATH = "../data/processed/full_dataset/" if not CREATE_EDGE_DATA_FOR_SAMPLE_DATASET else "../data/processed/sample_dataset/"
+
+#Path from where to load the windmill data
+WINDMILL_DATA_PATH = "../data/interim/full_dataset/windmill"
 
 #Filename of the edge feature data
 EDGE_FEAT_FILENAME = "edge_feats.csv"
@@ -25,7 +27,8 @@ EDGE_FEAT_FILENAME = "edge_feats.csv"
 
 def main():
     #load processed data and 
-    full_df = get_processed_data_df()#get_interim_windmill_data_gdf(WINDMILL_DATA_PATH)
+    wind_path = os.path.join(EDGE_FEATS_STORAGE_PATH, "all_features")
+    full_df = get_processed_data_df(wind_path)
     processed_windmill_ids = full_df.columns.get_level_values(1).unique()
     
     #Load the interim data and ensure only windmills that are present in the 

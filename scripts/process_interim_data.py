@@ -30,7 +30,8 @@ SUBSET_FEATURES = [
     "mean_pressure",
     "mean_relative_hum",
     "mean_wind_speed",
-    "mean_wind_dir", #this is converted to cos_deg and sin_deg in FFT paper
+    "mean_wind_dir_sin",
+    "mean_wind_dir_cos",
     "max_wind_speed_10min"
 ]
 
@@ -43,13 +44,14 @@ REDUNDANT_FEATURES = [
     "cellId",
     "Placement",
     "Turbine_type",
-    "timeResolution"
+    "timeResolution",
+    "UTM_x",
+    "UTM_y",
 ]
 
-PROCESSED_ROOT_PATH = "../data/processed/"
+PROCESSED_ROOT_PATH = "../data/processed/full_dataset" if not ONLY_PROCESS_SMALL_SUBSET_DATA else "../data/processed/sample_dataset"
 
-TRAIN_VAL_TEST_SPLIT = [0.6, 0.1, 0.3]
-
+TRAIN_VAL_TEST_SPLIT = [0.6, 0.2, 0.2]
 
 
 
@@ -144,7 +146,7 @@ def process_data(df: pd.DataFrame | gpd.GeoDataFrame,
                          p: int = 0.75) -> pd.DataFrame | gpd.GeoDataFrame:
     
     df = remove_windmills_with_less_than_p_percent_production_data(df, p)
-    
+       
     df = select_features(df, selected_features)
      
     ##### NOTE: some of these could prove useful -> need encoding though
@@ -189,15 +191,12 @@ def train_val_test_fraction_split(df: pd.DataFrame | gpd.GeoDataFrame,
 def main():
     # Load data
     print("* LOADING DATA")
-    
-    windmill_interim_base_path = "../data/interim/windmill/" if not ONLY_PROCESS_SMALL_SUBSET_DATA else "../data/interim/subset/windmill/"
-    weather_interim_base_path = "../data/interim/weather/" if not ONLY_PROCESS_SMALL_SUBSET_DATA else "../data/interim/subset/weather/"
-    
-    windmill_file_name = "windmill_subset_2018.parquet"
-    weather_file_name = "weather_subset_2018.parquet"
-    
-    windmill_gdf = get_interim_windmill_data_gdf(base_path = windmill_interim_base_path, file_name=windmill_file_name)
-    weather_gdf = get_interim_weather_data_gdf(base_path = weather_interim_base_path, file_name=weather_file_name)
+    if not ONLY_PROCESS_SMALL_SUBSET_DATA:
+        windmill_gdf = get_interim_windmill_data_gdf()
+        weather_gdf = get_interim_weather_data_gdf()
+    else:
+        windmill_gdf = get_interim_windmill_data_gdf(dataset_type="sample_dataset", file_name="windmill_subset_2018.parquet")
+        weather_gdf = get_interim_weather_data_gdf(dataset_type="sample_dataset", file_name="weather_subset_2018.parquet")
     
     #merge datasets into a single df
     print("* MERGING DATA")
@@ -214,7 +213,7 @@ def main():
         
     #Process data depending on # of features to use
     print("* CREATING THREE DATASETS; 'one_feature', 'subset_features', 'all_features'" if not ONLY_PROCESS_SMALL_SUBSET_DATA else "* CREATING SMALL SUBSET DATASET")
-    dataset_types = ["one_feature", "subset_features", "all_features"] if not ONLY_PROCESS_SMALL_SUBSET_DATA else ["subset_dataset"]
+    dataset_types = ["one_feature", "subset_features", "all_features"]# if not ONLY_PROCESS_SMALL_SUBSET_DATA else ["subset_dataset"]
     for dataset_type in dataset_types:
         print("\t * ",dataset_type)
         

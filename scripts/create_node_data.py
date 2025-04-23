@@ -11,9 +11,10 @@ from src.data.loading import(
     get_raw_windmill_meta_data_df
 )
 
+CREATE_NODE_DATA_FOR_SAMPLE_DATASET = True
 
-#Path to store the edge_feats data
-NODE_FEATS_STORAGE_PATH = "../data/processed/"
+#Path to store the node_info data
+NODE_FEATS_STORAGE_PATH = "../data/processed/full_dataset/" if not CREATE_NODE_DATA_FOR_SAMPLE_DATASET else "../data/processed/sample_dataset/"
 
 #Filename of the edge feature data
 NODE_FEAT_FILENAME = "node_info.csv"
@@ -22,7 +23,8 @@ NODE_FEAT_FILENAME = "node_info.csv"
 
 def main():
     #load data and ensure only one row per GSRN (aka windmill)
-    full_df = get_processed_data_df()
+    wind_path = os.path.join(NODE_FEATS_STORAGE_PATH, "all_features")
+    full_df = get_processed_data_df(wind_path)
     processed_windmill_ids = full_df.columns.get_level_values(1).unique()
     
     #load the raw windmill meta data
