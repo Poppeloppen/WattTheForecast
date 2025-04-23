@@ -30,16 +30,23 @@ def get_raw_windmill_prod_data_df(base_path: str = "../data/raw/windmill/settlem
     full_windmill_prod_path = os.path.join(base_path, f"{year}.parquet")    
     return parquet_to_df(full_windmill_prod_path)
     
-def get_interim_windmill_data_gdf(base_path: str = "../data/interim/windmill/", year: int = 2018) -> gpd.GeoDataFrame:
-    assert year in [2018, 2019]
-    full_windmill_path = os.path.join(base_path, f"windmill_{year}.parquet")
+def get_interim_windmill_data_gdf(base_path: str = "../data/interim/windmill/",
+                                  dataset_type: str = "full_dataset",
+                                  file_name: str = "windmill_2018.parquet") -> gpd.GeoDataFrame:
+    full_windmill_path = os.path.join(base_path, dataset_type, file_name)
     return parquet_to_gdf(full_windmill_path)
 
-def get_interim_weather_data_gdf(base_path: str = "../data/interim/weather/", year: int = 2018) -> gpd.GeoDataFrame:
-    assert year in [2018, 2019]
-    full_weather_path = os.path.join(base_path, f"weather_{year}.parquet")
+def get_interim_weather_data_gdf(base_path: str = "../data/interim/weather/",
+                                 dataset_type: str = "full_dataset",
+                                 file_name: str = "weather_2018.parquet") -> gpd.GeoDataFrame:
+    full_weather_path = os.path.join(base_path, dataset_type, file_name)
     return parquet_to_gdf(full_weather_path)
 
+def get_processed_data_df(base_path: str = "../data/processed/full_dataset/all_features/", 
+                          flag: str = "train",
+                          file_name: str = "wind_data.csv") -> pd.DataFrame:
+    data_path = os.path.join(base_path, flag, file_name)
+    return pd.read_csv(data_path, header=[0,1])
 
 
 
@@ -77,14 +84,6 @@ def get_raw_daily_weather_obs_df(base_path: str = "../data/raw/weather/climate/"
     normalized_df = normalize_json_df_col(df)
     
     return normalized_df.copy()
-
-
-
-
-
-
-
-
 
 
 
