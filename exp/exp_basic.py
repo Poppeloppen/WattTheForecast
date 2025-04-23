@@ -10,7 +10,6 @@ class Exp_Basic(object):
         
     def _build_model(self) -> None:
         raise NotImplementedError
-        return None ######### NOTE: could probably delete this?? #########
     
     ####################################
     # Modify to also make MPS available
@@ -48,8 +47,6 @@ class Exp_Basic(object):
 
 def main():
     exp = Exp_Basic()
-    
-    
     return
 
 
