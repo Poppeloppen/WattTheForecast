@@ -30,16 +30,16 @@ def get_raw_windmill_prod_data_df(base_path: str = "../data/raw/windmill/settlem
     full_windmill_prod_path = os.path.join(base_path, f"{year}.parquet")    
     return parquet_to_df(full_windmill_prod_path)
     
-def get_interim_windmill_data_gdf(base_path: str = "../data/interim/windmill/",
+def get_interim_windmill_data_gdf(base_path: str = "../data/interim/",
                                   dataset_type: str = "full_dataset",
                                   file_name: str = "windmill_2018.parquet") -> gpd.GeoDataFrame:
-    full_windmill_path = os.path.join(base_path, dataset_type, file_name)
+    full_windmill_path = os.path.join(base_path, dataset_type, "windmill", file_name)
     return parquet_to_gdf(full_windmill_path)
 
-def get_interim_weather_data_gdf(base_path: str = "../data/interim/weather/",
+def get_interim_weather_data_gdf(base_path: str = "../data/interim/",
                                  dataset_type: str = "full_dataset",
                                  file_name: str = "weather_2018.parquet") -> gpd.GeoDataFrame:
-    full_weather_path = os.path.join(base_path, dataset_type, file_name)
+    full_weather_path = os.path.join(base_path, dataset_type, "weather", file_name)
     return parquet_to_gdf(full_weather_path)
 
 def get_processed_data_df(base_path: str = "../data/processed/full_dataset/all_features/", 
