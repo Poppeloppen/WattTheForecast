@@ -1,0 +1,10 @@
+numpy==2.2.4
+packaging==24.2
+pillow==11.1.0
+pyparsing==3.2.3
+pyproj==3.7.1
+python-dateutil==2.9.0.post0
+pytorch_wavelets @ git+https://github.com/fbcotter/pytorch_wavelets.git@9a0c507f04f43c5397e384bb6be8340169b2fd9a
+requests==2.32.3
+six==1.17.0
+urllib3==2.3.0
