@@ -3,7 +3,7 @@ import torch
 from exp.exp_main import Exp_Main
 import random
 import numpy as np
-
+import wandb
 
 def main():
     fix_seed = 2025
@@ -21,6 +21,7 @@ def main():
     parser.add_argument('--plot_flag', type=int, default=1, help='Whether to save loss plots or not')
     parser.add_argument('--test_dir', type=str, default='', help='Base dir to save test results')
     parser.add_argument('--verbose', type=int, default=1, help='Whether to print inter-epoch losses.')
+    parser.add_argument('--use_wandb', type=int, default=0, help='Whether to print inter-epoch losses.')
 
     # data loader
     parser.add_argument('--data', type=str, required=False, default='Wind', help='dataset type, Wind or WindGraph')
@@ -109,6 +110,9 @@ def main():
     #    args.device_ids = [int(id_) for id_ in device_ids]
     #    args.gpu = args.device_ids[0]
     
+    if args.use_wandb:
+        print("Logging in to weights and biases")
+        wandb.login()
     
     Exp = Exp_Main
     

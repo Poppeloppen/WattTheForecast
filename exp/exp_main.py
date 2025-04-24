@@ -1,5 +1,7 @@
 import argparse
 
+import wandb.sdk
+
 from exp.exp_basic import Exp_Basic
 
 import numpy as np
@@ -21,8 +23,10 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch import optim
+import wandb
 
 import time
+
 
 
 import warnings
@@ -250,6 +254,11 @@ class Exp_Main(Exp_Basic):
         teacher_forcing_ratio = 0.8     # For LSTM Enc-Dec training (not used for others).
         total_num_iter = 0
         time_now = time.time()
+        
+        if self.args.use_wandb:
+            wandb.init(project="WattTheForecast", name=setting, config=self.args)
+            wandb.watch(self.model, log="all", log_freq=10)
+        
         for epoch in range(start_epoch, self.args.train_epochs):
             print(epoch)
         
@@ -358,6 +367,15 @@ class Exp_Main(Exp_Basic):
                 test_loss = self.vali(setting, test_data, test_loader, criterion, epoch=epoch, save_path=path)
             
             
+            print(model_optim.param_groups[0]["lr"])
+            if self.args.use_wandb:
+                wandb.log({
+                    "epoch" : epoch + 1,
+                    "train_loss" : train_loss,
+                    "val_loss" : vali_loss,
+                    "learning_rate" : model_optim.param_groups[0]["lr"]
+                })
+            
                         
             #plot the losses (either create new viz or update existing)
             if self.args.plot_flag and self.args.checkpoint_flag:
@@ -405,7 +423,8 @@ class Exp_Main(Exp_Basic):
         #if self.args.checkpoint_flag:
         #    best_model_path = path + "/" + "checkpoint.pth"
         #    self.model.load_state_dict(torch.load(best_model_path))
-        
+        if self.args.use_wandb:
+            wandb.finish()
         return self.model
     
     
@@ -597,7 +616,7 @@ class Exp_Main(Exp_Basic):
         #        os.makedirs(folder_path)
         
         mae, mse, rmse, mape, mspe = metric(preds, trues)
-
+        
         #NOTE: need to get this (inverse_transform) to work
         #print("preds:", preds)
         #print("preds shape:", preds.shape)

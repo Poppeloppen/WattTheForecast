@@ -178,3 +178,6 @@ data/*
 
 # macOS system files
 .DS_Store
+
+# ignore wandb logs
+wandb/*
