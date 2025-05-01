@@ -227,7 +227,7 @@ class Dataset_wind_data_graph(Dataset):
                  file_name: str = "wind_data.csv",  #name of file to read
                  target: str = None,                #name of station/windmill to target
                  scale: bool = True,                #
-                 timeenc: str = 0,                  #
+                 timeenc: int = 0,                  #
                  freq: str = "1h",                  #
                  subset: bool = False,              #
                  n_closest: int | None = None,      #
@@ -244,8 +244,8 @@ class Dataset_wind_data_graph(Dataset):
        
         #(notation used in paper)
         self.seq_len = size[0]      # S (the look-back window)
-        self.label_len = size[1]    # L (#)
-        self.pred_len = size[2]     # P (# of time-steps to predict into the future)
+        self.label_len = size[1]    # L (the # of elements from the encoder inputs to also use in decoder input)
+        self.pred_len = size[2]     # P (prediction horizon)
         
         self.total_seq_len = self.seq_len + self.pred_len
         assert self.label_len <= self.seq_len      
@@ -331,9 +331,7 @@ class Dataset_wind_data_graph(Dataset):
     
         #Scaling (NOTE: SAME AS REGULAR WIND DATA)
         if self.scale:
-            #below line is same as df_data.columns.get_level_values(0).unique()
-            self.cols_meas = df_data.stack(future_stack=True).columns
-            
+                   
             #fit scaler based only on training data + only keep relevant cols (as per above if-else-statement)
             if self.flag != "train":
                 train_data = pd.read_csv(_path.replace(self.flag, "train"), header=[0,1])
@@ -345,7 +343,7 @@ class Dataset_wind_data_graph(Dataset):
             
             #from (2621, 1472) --> (2621, 23, 64), that is (#rows, #features, #GSRN). note that 23*64 = 1472
             data = df_data.values.reshape(df_data.shape[0], df_data.columns.get_level_values(0).nunique(), -1)
-            data = np.stack([self.scaler.transform(data[..., i]) for i in range(data.shape[-1])], -1) #apply the scaler
+            data = np.stack([self.scaler.transform(data[..., i]) for i in range(data.shape[-1])], -1) #apply the scaler for each individual turbine
         else:
             data = df_data.values.reshape(df_data.shape[0], df_data.columns.get_level_values(0).nunique(), -1)
     
@@ -377,7 +375,7 @@ class Dataset_wind_data_graph(Dataset):
         #for each windmill
         for i in range(len(valid_slices)):
             #create array of len: (# of rows - total_seq_len + 1) filled with False: ([False, ... * (# of rows - total_seq_len + 1)])
-            ###### WHY SUBTRACT total_seq_len ???? 
+            # subtract total_seq_len as this gives last possible start index of the sliding window
             start_indxs = np.zeros(data.shape[0] - self.total_seq_len + 1, dtype='bool')
             
             #get start and end idx of valid slices
@@ -410,10 +408,10 @@ class Dataset_wind_data_graph(Dataset):
             df_stamp["day"] = df_stamp.time.apply(lambda row: row.day)
             df_stamp["weekday"] = df_stamp.time.apply(lambda row: row.weekday())
             df_stamp["hour"] = df_stamp.time.apply(lambda row: row.hour)
-            df_stamp["minute"] = df_stamp.time.apply(lambda row: row.minute)
+            df_stamp["minute"] = df_stamp.time.apply(lambda row: row.minute)    #NOTE: redundant as max 1h resolution.
             data_stamp = df_stamp.drop(["time"], axis=1).values
         elif self.timeenc == 1:
-            raise NotImplementedError("Yet to be implemented")
+            raise NotImplementedError("Time encoding has yet to be implemented")
         else:
             raise ValueError("Pass timeenc as either 0 or 1")
 
@@ -421,52 +419,76 @@ class Dataset_wind_data_graph(Dataset):
         self.data_x = data              #the full dataset (except time)
         self.data_stamp = data_stamp    #the time dataset
         
+        #define all valid starting points of the sliding window
         self.valid_indxs = np.where(self.data_indxs.sum(1) >= self.min_num_nodes)[0] #index slices for the data
         self.valid_indxs = self.valid_indxs[::self.data_step] #apply the data_step size -> only look at every data_step'th datapoint
         
-        #NOTE: NEED TO CHECK THIS THROUGH AGAIN
         # Find the n_closest number of nodes for every node. Use euclidean distance from scaled distances.
         if self.n_closest is not None:
+            #if subset is specified, keep only the node features for those nodes, otherwise keep features for all nodes
             sub_node_info = self.node_info[self.node_info['GSRN'].isin(self.subset)] if self.subset is not None else self.node_info
+            
+            #using fit & transform of the MinMaxScaler to scale the lat/lon features into the features slat/slon
             latlon_scaler = MinMaxScaler()
             latlon_scaler.fit(sub_node_info[['lat', 'lon']].values)
             sub_node_info[['slat', 'slon']] = latlon_scaler.transform(sub_node_info[['lat', 'lon']].values)
 
             connectivity = {}
+            #for each row (aka. node)
             for i, row_i in sub_node_info.iterrows():
+                
+                #compute euclidean distance to all nodes (inclduing to itself)
                 dists = np.array(sub_node_info.apply(
                     lambda row: np.sqrt((row['slat'] - row_i.slat) ** 2 + (row['slon'] - row_i.slon) ** 2),
                     axis=1).to_list())
+                
+                #Add the GSRN of the current node to the connectivity dict as a key and a
+                # list of all other nodes, sorted by the shortest dist to the current node,
+                # as values
                 connectivity[row_i['GSRN']] = sub_node_info.GSRN.iloc[np.argsort(dists)].values
+            
+            #Turn connectivity dict into df with node idx (0, ..., # nodes) as columns
+            # with the rows within each column sorted by the distance to the corresponding columns
+            # closest node is first row, etc. 
             connectivity = pd.DataFrame(connectivity)
             self.connectivity = connectivity.apply(lambda col: col.map(self._stations), axis=0)
             self.connectivity.columns = [self._stations[st] for st in self.connectivity.columns]
 
             self.connectivity = [
-                self.connectivity.columns.values,
-                self.connectivity.values
+                self.connectivity.columns.values,   #array of nodes (0,..., # of nodes)
+                self.connectivity.values            #array with shape (64,64) -> col = node id, row sorted by dist to node id (closest first)
             ]
         
         
         #create graph structure
         edge_feats = []
-        senders = []
+        senders = []    
         receivers = []
+        #for each turbine (GSRN), node i
         for rec_i, stat_i in enumerate(self._stations.keys()):
+            
+            #extract node feature for node i
             info_i = self.node_info[self.node_info['GSRN'] == stat_i]
+            
+            #for each turbine (GSRN), node j
             for send_i, stat_j in enumerate(self._stations.keys()):
                 receivers.append(rec_i)
                 senders.append(send_i)
+                
+                #Create edge between node i and node j (will also create self-loop)
                 info_j = self.node_info[self.node_info['GSRN'] == stat_j]
+                
+                #compute difference in lat/lon for node i and node j and add as edge_feature
                 dlat = info_i.lat.iloc[0] - info_j.lat.iloc[0]
                 dlon = info_i.lon.iloc[0] - info_j.lon.iloc[0]
                 edge_feats.append([dlat, dlon])
 
+        
         self.graph_struct = {
-            'nodes': None,      # [NxSxD]
-            'edges': np.array(edge_feats),          # [N2x2]
-            'senders': np.array(senders),           # [N2,]
-            'receivers': np.array(receivers),       # [N2,]
+            'nodes': None,                          # [NxSxD]
+            'edges': np.array(edge_feats),          # [N^2, 2]
+            'senders': np.array(senders),           # [N^2,]
+            'receivers': np.array(receivers),       # [N^2,]
             'station_names': self._stations.keys(),
         }
         
@@ -474,18 +496,20 @@ class Dataset_wind_data_graph(Dataset):
     
     def __getitem__(self, index: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: 
         
-        s_begin = self.valid_indxs[index]
-        s_end = s_begin + self.seq_len
-        r_begin = s_end - self.label_len
-        r_end = s_end + self.pred_len
+        s_begin = self.valid_indxs[index]   #start of input sequence
+        s_end = s_begin + self.seq_len      #end of input sequence
+        r_begin = s_end - self.label_len    #start of output sequence - overlap of size L (label_len)
+        r_end = s_end + self.pred_len       #end of output sequence
         
-        stations = np.where(self.data_indxs[s_begin, :])[0]
+        #get idx of all stations active a this timestep
+        stations = np.where(self.data_indxs[s_begin, :])[0] 
         
-        seq_x = self.data_x[s_begin:s_end, :, stations] 
-        seq_y = self.data_x[r_begin:r_end, :, stations] 
+        #get input and output sequences for the selected stations
+        seq_x = self.data_x[s_begin:s_end, :, stations] #(input time-range, # features, # turbines)
+        seq_y = self.data_x[r_begin:r_end, :, stations] #(output time-range, # features, # turbines)
         
         
-        
+        #Get GSRN of the stations with available data
         if self.subset is not None:
             station_names = np.array(self.subset)[stations]
             stations = np.array([self._stations[s] for s in station_names])
@@ -498,44 +522,52 @@ class Dataset_wind_data_graph(Dataset):
         #################
         if self.n_closest is not None:
             def select_relevant_neighbors(col):
+                """for each column/node with available data (<stations>), select the 1+n_closest nodes 
+                (1+ since there are self-loops) 
+                """
                 return col[np.isin(col, stations)][:min(1 + self.n_closest, len(stations))]
 
             def get_edges_to_receiver_from_senders(col, col_name):
+                """find edge indices where receiver is col_name and sender is in col"""
                 col = np.where(
                     np.stack(
-                        [(self.graph_struct['receivers'] == col_name),
-                         np.isin(self.graph_struct['senders'], col)]
-                    ).all(0)
+                        [(self.graph_struct['receivers'] == col_name),  #bool mask -> is receiver current node (col_name)
+                         np.isin(self.graph_struct['senders'], col)]    #bool mask -> is sender in n_closest (col)
+                    ).all(0)    #logical AND across both previous bool masks
                 )[0]
                 return col
 
-            connect = self.connectivity[1][:, np.where(np.isin(self.connectivity[0], stations))[0]]
-            connect = np.apply_along_axis(select_relevant_neighbors, axis=0, arr=connect)
+            connect = self.connectivity[1][:, np.where(np.isin(self.connectivity[0], stations))[0]] #ensure connectivity is only kept among nodes with data avialable at given timestep
+            connect = np.apply_along_axis(select_relevant_neighbors, axis=0, arr=connect)           #create array size (n_closest+1, stations)
+            
+            #Allow each receiver node to only have n_closest+1 incoming edges --> from the n_closest closest nodes + itself
             keep_edges = np.concatenate([get_edges_to_receiver_from_senders(connect[:, i], s) for i, s in
                                           enumerate(self.connectivity[0][np.isin(self.connectivity[0], stations)])])
 
         else:
+            #include all edges between the nodes with available data
             keep_edges = np.where(np.stack([np.isin(self.graph_struct['senders'], stations),
                                             np.isin(self.graph_struct['receivers'], stations)]).all(0))[0]
         
+        #remap global station/turbine indices to the local nodes indices
         graph_mapping = dict(zip(stations, np.arange(len(stations))))
         senders = np.vectorize(graph_mapping.get)(self.graph_struct['senders'][keep_edges])
         receivers = np.vectorize(graph_mapping.get)(self.graph_struct['receivers'][keep_edges])
         edge_feats = self.graph_struct['edges'][keep_edges]
         
-        
+        #graph in- and output for the GNNs
         graph_x = {
-            'nodes': seq_x.transpose(2, 0, 1),       # [NxSxD]
-            'edges': edge_feats,                     # [N2x2]
-            'senders': senders,                      # [N2,]
-            'receivers': receivers,                  # [N2,]
+            'nodes': seq_x.transpose(2, 0, 1),       # [# nodes, seq_len, # features]
+            'edges': edge_feats,                     # [(# nodes)^2, 2] | [(# nodes)*n_closest, 2] (if n_closest != None)
+            'senders': senders,                      # [(# nodes)^2,] | [(# nodes)*n_closest,] (if n_closest != None)
+            'receivers': receivers,                  # [(# nodes)^2,] | [(# nodes)*n_closest,] (if n_closest != None)
             'station_names': station_names,
         }
         graph_y = {
-            'nodes': seq_y.transpose(2, 0, 1),      # [NxSxD]
-            'edges': np.array(edge_feats),          # [N2x2]
-            'senders': np.array(senders),           # [N2,]
-            'receivers': np.array(receivers),       # [N2,]
+            'nodes': seq_y.transpose(2, 0, 1),      # [# nodes, pred_len + label_len, # features]
+            'edges': np.array(edge_feats),          # same as graph_x
+            'senders': np.array(senders),           # same as graph_x
+            'receivers': np.array(receivers),       # same as graph_x
             'station_names': station_names,
         }
 
