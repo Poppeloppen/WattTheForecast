@@ -1,16 +1,17 @@
 import torch 
 import torch.nn as nn 
+from typing import Callable, Any
 from src.layers.graphs import GraphsTuple
 
-def broadcast_receiver_nodes_to_edges(graph: GraphsTuple) -> ...:
+def broadcast_receiver_nodes_to_edges(graph: GraphsTuple) -> torch.Tensor:
     return graph.nodes.index_select(index=graph.receivers.long(), dim=0)
 
 
-def broadcast_sender_nodes_to_edges(graph: GraphsTuple) -> ...:
+def broadcast_sender_nodes_to_edges(graph: GraphsTuple) -> torch.Tensor:
     return graph.nodes.index_select(index=graph.senders.long(), dim=0)
 
 
-def unsorted_sum_agg(data: ..., segment_ids: ...) -> ...:
+def unsorted_sum_agg(data: torch.Tensor, segment_ids: torch.Tensor) -> torch.Tensor:
     num_edges = torch.unique(segment_ids).shape[0]
     output = torch.zeros((num_edges, *data.shape[1:])).to(data.device)
     if len(data.shape) == 3:
@@ -20,7 +21,7 @@ def unsorted_sum_agg(data: ..., segment_ids: ...) -> ...:
     return output
 
 
-def unsorted_mean_agg(data, segment_ids):
+def unsorted_mean_agg(data: torch.Tensor, segment_ids: torch.Tensor) -> torch.Tensor:
     unique_ids, counts = torch.unique(segment_ids, return_counts=True)
     num_edges = len(unique_ids)
     output = torch.zeros((num_edges, *data.shape[1:])).to(data.device)
@@ -36,28 +37,30 @@ def unsorted_mean_agg(data, segment_ids):
 
 
 
-def unsorted_softmax(data, segment_ids):
-    data = torch.exp(data)
-    num_edges = torch.unique(segment_ids).shape[0]
+# def unsorted_softmax(data: torch.Tensor, segment_ids: torch.Tensor) -> ...:
+#     data = torch.exp(data)
+#     num_edges = torch.unique(segment_ids).shape[0]
 
-    denom = torch.zeros((num_edges, *data.shape[1:])).to(data.device)
-    denom = denom.scatter_add(0, segment_ids.unsqueeze(-1).unsqueeze(-1).expand(data.shape), data)
-    denom = denom.index_select(index=segment_ids.long(), dim=0)
+#     denom = torch.zeros((num_edges, *data.shape[1:])).to(data.device)
+#     denom = denom.scatter_add(0, segment_ids.unsqueeze(-1).unsqueeze(-1).expand(data.shape), data)
+#     denom = denom.index_select(index=segment_ids.long(), dim=0)
 
-    data = data / denom
-    return data
+#     data = data / denom
+#     return data
 
 
 
 class _EdgesToNodesAggregator(nn.Module):
     """Aggregates sent or received edges into the corresponding nodes."""
 
-    def __init__(self, reducer, use_sent_edges=False):
+    def __init__(self, reducer: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+                 use_sent_edges: bool = False
+                 ) -> None:
         super(_EdgesToNodesAggregator, self).__init__()
         self._reducer = reducer
         self._use_sent_edges = use_sent_edges
 
-    def forward(self, graph):
+    def forward(self, graph: GraphsTuple) -> list[torch.Tensor]:
         indices = graph.senders if self._use_sent_edges else graph.receivers
 
         return [self._reducer(graph.edges, indices)]
@@ -68,12 +71,13 @@ class _EdgesToNodesAggregator(nn.Module):
 class EdgeBlock(nn.Module):
     def __init__(self,
                  update_fn,
-                 d_model,
-                 use_edges=True,
-                 use_receiver_nodes=True,
-                 use_sender_nodes=True,
-                 num_node_series=1,
-                 num_edge_series=1):
+                 d_model: int,
+                 use_edges: bool = True,
+                 use_receiver_nodes: bool = True,
+                 use_sender_nodes: bool = True,
+                 num_node_series: int = 1,
+                 num_edge_series: int = 1
+                 ) -> None:
         super(EdgeBlock, self).__init__()
         self._use_edges = use_edges
         self._use_receiver_nodes = use_receiver_nodes
@@ -95,7 +99,7 @@ class EdgeBlock(nn.Module):
             raise NotImplementedError
         self.num_edge_series = num_edge_series
 
-    def forward(self, graph: GraphsTuple, **kwargs):
+    def forward(self, graph: GraphsTuple, **kwargs: Any) -> tuple[GraphsTuple, None | list]:
         edges_to_collect = []
         
         if self._use_edges:
@@ -148,13 +152,14 @@ class NodeBlock(nn.Module):
 
     def __init__(self,
                  update_fn,
-                 d_model,
-                 use_received_edges=True,
-                 use_sent_edges=False,
-                 use_nodes=True,
-                 edges_agg=unsorted_mean_agg,
-                 num_node_series=1,
-                 num_edge_series=1):
+                 d_model: int,
+                 use_received_edges: bool = True,
+                 use_sent_edges: bool = False,
+                 use_nodes: bool = True,
+                 edges_agg: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = unsorted_mean_agg,
+                 num_node_series: int = 1,
+                 num_edge_series: int = 1
+                 ) -> None:
         super(NodeBlock, self).__init__()
         self._use_received_edges = use_received_edges
         self._use_sent_edges = use_sent_edges
@@ -175,7 +180,7 @@ class NodeBlock(nn.Module):
         self.num_node_series = num_node_series
         self.num_edge_series = num_edge_series
 
-    def forward(self, graph, **kwargs):
+    def forward(self, graph: GraphsTuple, **kwargs: Any) -> tuple[GraphsTuple, None | list]:
 
         nodes_to_collect = []
         if self._use_received_edges:
@@ -208,26 +213,28 @@ class NodeBlock(nn.Module):
         return graph, attn_nodes
 
 
-class Aggregator(nn.Module):
-    def __init__(self, mode):
-        super(Aggregator, self).__init__()
-        self.mode = mode
+# class Aggregator(nn.Module):
+#     def __init__(self, mode):
+#         super(Aggregator, self).__init__()
+#         print(type(mode))
+        
+#         self.mode = mode
 
-    def forward(self, graph):
-        edges = graph.edges
-        nodes = graph.nodes
-        if self.mode == 'receivers':
-            indeces = graph.receivers
-        elif self.mode == 'senders':
-            indeces = graph.senders
-        else:
-            raise AttributeError("invalid parameter `mode`")
-        N_edges, N_features = edges.shape
-        N_nodes=nodes.shape[0]
-        aggrated_list = []
-        for i in range(N_nodes):
-            aggrated = edges[indeces == i]
-            if aggrated.shape[0] == 0:
-                aggrated = torch.zeros(1, N_features)
-            aggrated_list.append(torch.sum(aggrated, dim=0))
-        return torch.stack(aggrated_list, dim=0)
+#     def forward(self, graph):
+#         edges = graph.edges
+#         nodes = graph.nodes
+#         if self.mode == 'receivers':
+#             indeces = graph.receivers
+#         elif self.mode == 'senders':
+#             indeces = graph.senders
+#         else:
+#             raise AttributeError("invalid parameter `mode`")
+#         N_edges, N_features = edges.shape
+#         N_nodes=nodes.shape[0]
+#         aggrated_list = []
+#         for i in range(N_nodes):
+#             aggrated = edges[indeces == i]
+#             if aggrated.shape[0] == 0:
+#                 aggrated = torch.zeros(1, N_features)
+#             aggrated_list.append(torch.sum(aggrated, dim=0))
+#         return torch.stack(aggrated_list, dim=0)
