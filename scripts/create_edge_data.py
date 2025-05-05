@@ -12,13 +12,16 @@ from src.data.loading import(
 )
 
 
-CREATE_EDGE_DATA_FOR_SAMPLE_DATASET = True
-
-#Path to store the edge_feats data
-EDGE_FEATS_STORAGE_PATH = "../data/processed/full_dataset/" if not CREATE_EDGE_DATA_FOR_SAMPLE_DATASET else "../data/processed/sample_dataset/"
+CREATE_EDGE_DATA_FOR_SAMPLE_DATASET = False
 
 #Path from where to load the windmill data
-WINDMILL_DATA_PATH = "../data/interim/full_dataset/windmill"
+WINDMILL_DATA_BASE_PATH = "../data/interim/"
+
+dataset_type = "full_dataset" if not CREATE_EDGE_DATA_FOR_SAMPLE_DATASET else "sample_dataset"
+file_name = "windmill_2018.parquet" if not CREATE_EDGE_DATA_FOR_SAMPLE_DATASET else "windmill_subset_2018.parquet"
+
+#Path to store the edge_feats data
+EDGE_FEATS_STORAGE_PATH = f"../data/processed/{dataset_type}/" if not CREATE_EDGE_DATA_FOR_SAMPLE_DATASET else f"../data/processed/{dataset_type}/"
 
 #Filename of the edge feature data
 EDGE_FEAT_FILENAME = "edge_feats.csv"
@@ -33,7 +36,7 @@ def main():
     
     #Load the interim data and ensure only windmills that are present in the 
     # final dataset is used and ensure that there is only one row per GSRN (aka windmill)
-    wind_df = get_interim_windmill_data_gdf(WINDMILL_DATA_PATH)
+    wind_df = get_interim_windmill_data_gdf(base_path=WINDMILL_DATA_BASE_PATH, dataset_type=dataset_type, file_name=file_name)
     wind_df = wind_df[wind_df["GSRN"].isin(processed_windmill_ids)]
     wind_df = wind_df.drop_duplicates(subset=["GSRN", "UTM_x", "UTM_y"])
     
