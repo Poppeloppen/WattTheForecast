@@ -18,7 +18,7 @@ from src.data.loading import (
 )
 
 #Flag: should the processing happen to the small subset dataset (only one weather cell AND 31 days)
-ONLY_PROCESS_SMALL_SUBSET_DATA = True
+ONLY_PROCESS_SMALL_SUBSET_DATA = False
 
 
 ONE_FEATURE = [
@@ -85,7 +85,7 @@ def remove_windmills_with_less_than_p_percent_production_data(df: pd.DataFrame |
     
     total_rows = len(df)
     ids_to_drop = [
-        id for id in all_ids if (df["VAERDI"][id] == 0).sum() / total_rows >= p
+        id for id in all_ids if (df["VAERDI"][id] == 0).sum() / total_rows >= 1 - p
     ]    
     
     df = df.drop(columns=df.loc[:, df.columns.get_level_values(1).isin(ids_to_drop)].columns)
