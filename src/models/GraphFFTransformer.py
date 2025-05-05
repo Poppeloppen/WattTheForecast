@@ -86,7 +86,7 @@ class Model(nn.Module):
                 x_mark_dec: torch.Tensor,
                 enc_self_mask: ... = None,
                 **_: Any
-                ) -> tuple[torch.Tensor, list[]] | torch.Tensor:
+                ) -> tuple[torch.Tensor, list] | torch.Tensor:
         #     x_enc and x_mark_enc are not used, but kept to keep the signatures similar for spatial and
         #     non-spatial models.
 
