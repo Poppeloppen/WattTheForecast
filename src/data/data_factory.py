@@ -1,3 +1,4 @@
+import argparse
 from torch.utils.data import DataLoader
 
 from src.data.data_loader import Dataset_wind_data, Dataset_wind_data_graph, collate_graph
@@ -8,7 +9,7 @@ data_dict = {
 }
 
 
-def data_provider(args, flag: str) -> list[Dataset_wind_data, DataLoader]:
+def data_provider(args: argparse.Namespace, flag: str) -> list[Dataset_wind_data, DataLoader]:
     Data = data_dict[args.data]
     
     # See the __read_data__() func from Dataset_wind_data in ./data_loader.py
