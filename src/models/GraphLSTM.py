@@ -1,7 +1,9 @@
 import argparse
+import torch
 import torch.nn as nn
 from typing import Any
 from src.layers.LSTM_EncDec import Encoder
+from src.layers.graphs import GraphsTuple
 from src.layers.graph_modules import GraphLayer, GraphNetwork
 from src.layers.graph_blocks import unsorted_mean_agg
 from src.layers.Embed import GraphDataEmbedding
@@ -49,13 +51,13 @@ class Model(nn.Module):
             projection=nn.Linear(configs.d_model, configs.c_out, bias=True)
         )
 
-    def forward(self, x_enc: ...,
-                x_mark_enc: ...,
-                x_dec: ...,
-                x_mark_dec: ...,
+    def forward(self, x_enc: GraphsTuple,
+                x_mark_enc: torch.Tensor,
+                x_dec: GraphsTuple,
+                x_mark_dec: torch.Tensor,
                 enc_self_mask: ... = None,
                 **_: Any
-                ) -> ...:
+                ) -> tuple[torch.Tensor, None] | torch.Tensor:
         #     x_enc and x_mark_enc are not used, but kept to keep the signatures similar for spatial and
         #     non-spatial models.
 

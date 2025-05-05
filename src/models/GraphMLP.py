@@ -4,14 +4,18 @@ import torch
 import torch.nn as nn
 from typing import Any
 from src.layers.MLP_Layer import MLPLayer
+from src.layers.graphs import GraphsTuple
 from src.layers.graph_modules import GraphLayer, GraphNetwork
 from src.layers.graph_blocks import unsorted_mean_agg
 
 
 
 class MLP(nn.Module):
-    def __init__(self, layers: ...)-> None:
+    def __init__(self, layers: list[MLPLayer])-> None:
         super(MLP, self).__init__()
+        print("layers type:", type(layers))
+        print("layers len:", len(layers))
+        print("layers elm type:", type(layers[0]))
         self.layers = nn.ModuleList(layers)
 
     def forward(self, outputs: ... , **_: ...) -> tuple[torch.Tensor]:
@@ -81,12 +85,12 @@ class Model(nn.Module):
             projection=nn.Linear(configs.d_model, self.output_features * self.pred_len, bias=True)
         )
 
-    def forward(self, x_enc: ...,
-                x_mark_enc: ...,
-                x_dec: ...,
-                x_mark_dec: ...,
+    def forward(self, x_enc: GraphsTuple,
+                x_mark_enc: torch.Tensor,
+                x_dec: GraphsTuple,
+                x_mark_dec: torch.Tensor,
                 enc_self_mask: ... = None,
-                **_: ...
+                **_: Any
                 ) -> tuple[torch.Tensor, None] | torch.Tensor:
         #     x_enc and x_mark_enc are not used, but kept to keep the signatures similar for spatial and
         #     non-spatial models.

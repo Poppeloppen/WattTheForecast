@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from typing import Any
 from src.layers.graphs import GraphsTuple
 
 class Model(nn.Module):
@@ -18,7 +19,7 @@ class Model(nn.Module):
                 x_mark_enc: torch.Tensor,
                 x_dec: GraphsTuple,
                 x_mark_dec: torch.Tensor,
-                **_: ...
+                **_: Any
                 ) -> torch.Tensor:
         #     x_enc and x_mark_enc are not used, but kept to keep the signatures similar for spatial and
         #     non-spatial models.

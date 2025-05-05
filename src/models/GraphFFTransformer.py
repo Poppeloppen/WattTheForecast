@@ -1,6 +1,7 @@
 import argparse
 import torch
 import torch.nn as nn
+from typing import Any
 import src.layers.FFTransformer_EncDec as FFT
 from src.layers.FFT_SelfAttention import FFTAttention
 
@@ -8,6 +9,7 @@ from src.layers.FFT_SelfAttention import FFTAttention
 #from src.layers.FFTransformer_EncDec import EncoderLayer       #(they do NOT use this)
 from src.layers.Transformer_EncDec import EncoderLayer          #(they DO use this)
 from src.layers.SelfAttention_Family import AttentionLayer, FullAttention, LogSparseAttentionLayer, ProbAttention
+from src.layers.graphs import GraphsTuple
 from src.layers.graph_modules import GraphLayer, GraphNetwork
 from src.layers.graph_blocks import unsorted_mean_agg
 from src.layers.Embed import EdgeDataEmbedding, DataEmbedding
@@ -78,13 +80,13 @@ class Model(nn.Module):
             projection=nn.Linear(configs.d_model, configs.c_out, bias=True)
         )
 
-    def forward(self, x_enc: ...,
-                x_mark_enc: ...,
-                x_dec: ...,
-                x_mark_dec: ...,
+    def forward(self, x_enc: GraphsTuple,
+                x_mark_enc: torch.Tensor,
+                x_dec: GraphsTuple,
+                x_mark_dec: torch.Tensor,
                 enc_self_mask: ... = None,
-                **_
-                ) -> ...:
+                **_: Any
+                ) -> tuple[torch.Tensor, list[]] | torch.Tensor:
         #     x_enc and x_mark_enc are not used, but kept to keep the signatures similar for spatial and
         #     non-spatial models.
 
