@@ -13,9 +13,6 @@ from src.layers.graph_blocks import unsorted_mean_agg
 class MLP(nn.Module):
     def __init__(self, layers: list[MLPLayer])-> None:
         super(MLP, self).__init__()
-        print("layers type:", type(layers))
-        print("layers len:", len(layers))
-        print("layers elm type:", type(layers[0]))
         self.layers = nn.ModuleList(layers)
 
     def forward(self, outputs: ... , **_: ...) -> tuple[torch.Tensor]:
