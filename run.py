@@ -17,11 +17,11 @@ def main():
     parser.add_argument('--is_training', type=int, required=False, default=1, help='status')
     parser.add_argument('--model_id', type=str, required=False, default='test', help='model id for saving')
     parser.add_argument('--model', type=str, required=False, default='FFTransformer',
-                        help='model name, options: [FFTransformer, Autoformer, Informer, Transformer, LogSparse, LSTM, MLP, persistence (and same with GraphXxxx)]')
+                        help='model name, options: [FFTransformer, LSTM, MLP, persistence (and same with GraphXxxx)]')
     parser.add_argument('--plot_flag', type=int, default=1, help='Whether to save loss plots or not')
     parser.add_argument('--test_dir', type=str, default='', help='Base dir to save test results')
     parser.add_argument('--verbose', type=int, default=1, help='Whether to print inter-epoch losses.')
-    parser.add_argument('--use_wandb', type=int, default=0, help='Whether to print inter-epoch losses.')
+    parser.add_argument('--use_wandb', type=int, default=0, help='Whether to track training using weights and biases.')
 
     # data loader
     parser.add_argument('--data', type=str, required=False, default='Wind', help='dataset type, Wind or WindGraph')
@@ -43,9 +43,11 @@ def main():
     parser.add_argument('--seq_len', type=int, default=60, help='input sequence length')
     parser.add_argument('--label_len', type=int, default=48, help='start token length. Note that Graph models only use label_len and pred_len')
     parser.add_argument('--pred_len', type=int, default=6, help='prediction sequence length')
-    parser.add_argument('--enc_in', type=int, default=23, help='Number of encoder input features') #NOTE: OG value were 8 (# of features in OG data, hence changed to # of features in this data)
-    parser.add_argument('--dec_in', type=int, default=23, help='Number of decoder input features') #NOTE: OG value were 8 (# of features in OG data, hence changed to # of features in this data)
+    ##### NOTE: Beware of these values #####
+    parser.add_argument('--enc_in', type=int, default=8, help='Number of encoder input features') #NOTE: OG value were 8 (# of features in OG data, hence changed to # of features in this data)
+    parser.add_argument('--dec_in', type=int, default=8, help='Number of decoder input features') #NOTE: OG value were 8 (# of features in OG data, hence changed to # of features in this data)
     parser.add_argument('--c_out', type=int, default=1, help='output size, note that it is assumed that the target features are placed last')
+    ########################################
 
     # model define
     parser.add_argument('--d_model', type=int, default=512, help='dimension of model')
@@ -58,7 +60,7 @@ def main():
     parser.add_argument('--factor', type=int, default=3, help='attn factor')
     #parser.add_argument('--distil', action='store_false', default=True, help='whether to use distilling in encoder, using this argument means not using distilling, not used for GNN models')
     parser.add_argument('--dropout', type=float, default=0.05, help='dropout')
-    parser.add_argument('--embed', type=str, default='timeF', help='time features encoding, options:[timeF, fixed, learned]')
+    parser.add_argument('--embed', type=str, default='fixed', help='time features encoding, options:[timeF, fixed, learned]')
     parser.add_argument('--activation', type=str, default='gelu', help='activation')
     parser.add_argument('--output_attention', action='store_true', help='whether to output attention in ecoder', default=False)
     #parser.add_argument('--win_len', type=int, default=6, help='Local attention length for LogSparse Transformer')
@@ -87,7 +89,7 @@ def main():
 
     # GPU / MPS
     parser.add_argument('--use_gpu', type=bool, default=True, help='use gpu')
-    #parser.add_argument('--gpu', type=int, default=0, help='gpu')
+    parser.add_argument('--gpu', type=int, default=0, help='gpu')
     ## multi-gpu is not fully developed yet and still experimental for graph data.
     parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple gpus', default=False)
     #parser.add_argument('--devices', type=str, default='0,1,2,3', help='device ids of multiple gpus')
@@ -102,13 +104,6 @@ def main():
     # Ensure that either GPU or MPS is available before using
     args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
     args.use_mps = True if torch.backends.mps.is_available() and args.use_mps else False
-    
-    
-    #if args.use_gpu and args.use_multi_gpu:
-    #    args.devices = args.devices.replace(' ', '')
-    #    device_ids = args.devices.split(',')
-    #    args.device_ids = [int(id_) for id_ in device_ids]
-    #    args.gpu = args.device_ids[0]
     
     if args.use_wandb:
         print("Logging in to weights and biases")
@@ -134,10 +129,14 @@ def main():
             
             exp = Exp(args)  # set experiments
             print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
-            exp.train(setting)
+            t = exp.train(setting)
             
-            print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-            exp.test(setting, base_dir=args.test_dir)
+            
+            #Only do testing if model is not persistence
+            if t is not False:          
+                print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+                exp.test(setting, base_dir=args.test_dir)
+            
             
             torch.cuda.empty_cache()
             
