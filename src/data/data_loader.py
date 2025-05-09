@@ -11,15 +11,15 @@ class Dataset_wind_data(Dataset):
     def __init__(self, root_path: str,              #path to root dir of clean data
                  dataset_size: str,
                  dataset_features: str,             #["one_feature", "subset_features", "all_features"]
-                 flag: str = "train",               #["train", "val", "test"] - I think?
+                 flag: str = "train",               #["train", "val", "test"]
                  size : list[int, int, int] = None, #[seq_len, label_len, pred_len]
                  features: str = "S",               #S: univariate, M: multivariate
                  file_name: str = "wind_data.csv",  #name of file to read
-                 target: str = None,                #name of station/windmill to target
-                 scale: bool = True,                #
-                 timeenc: str = 0,                  #
-                 freq: str = "1h",                  #
-                 all_stations: bool = False,        #
+                 target: str = None,                #name of station/windmill to target, if any
+                 scale: bool = True,                #apply scaling (StandardScaler)
+                 timeenc: str = 0,                  #apply timeencoding (not implemented)
+                 freq: str = "1h",                  #observation frequency
+                 all_stations: bool = False,        #Wether to use all the stations or only specific ones.
                  data_step: int = 5,                #use every data_step'th point (1 for all data)
                  **_: Any                           #allow for the function to take additional arguments - won't be used
                  ) -> None:      
@@ -329,23 +329,72 @@ class Dataset_wind_data_graph(Dataset):
             cols_data = df_raw.columns[df_raw.columns.get_level_values(0) == "VAERDI"]
             df_data = df_raw[cols_data]
     
-        #Scaling (NOTE: SAME AS REGULAR WIND DATA)
-        if self.scale:
+        # #Scaling (NOTE: SAME AS REGULAR WIND DATA)
+        # if self.scale:
                    
-            #fit scaler based only on training data + only keep relevant cols (as per above if-else-statement)
-            if self.flag != "train":
-                train_data = pd.read_csv(_path.replace(self.flag, "train"), header=[0,1])
-                train_data = train_data[cols_data]
-                self.scaler.fit(train_data.stack(future_stack=True).values)
-                del train_data #free up memory -> train_data is no longer used
-            else:
-                self.scaler.fit(df_data.stack(future_stack=True).values)
+        #     #fit scaler based only on training data + only keep relevant cols (as per above if-else-statement)
+        #     if self.flag != "train":
+        #         train_data = pd.read_csv(_path.replace(self.flag, "train"), header=[0,1])
+        #         train_data = train_data[cols_data]
+        #         self.scaler.fit(train_data.stack(future_stack=True).values)
+        #         del train_data #free up memory -> train_data is no longer used
+        #     else:
+        #         self.scaler.fit(df_data.stack(future_stack=True).values)
             
-            #from (2621, 1472) --> (2621, 23, 64), that is (#rows, #features, #GSRN). note that 23*64 = 1472
+        #     #from (2621, 1472) --> (2621, 23, 64), that is (#rows, #features, #GSRN). note that 23*64 = 1472
+        #     data = df_data.values.reshape(df_data.shape[0], df_data.columns.get_level_values(0).nunique(), -1)
+        #     data = np.stack([self.scaler.transform(data[..., i]) for i in range(data.shape[-1])], -1) #apply the scaler for each individual turbine
+        # else:
+        #     data = df_data.values.reshape(df_data.shape[0], df_data.columns.get_level_values(0).nunique(), -1)
+
+        self.scalers = [StandardScaler() for _ in range(len(self._stations))]
+        
+        if self.scale:
+            
+            ###### FIT scalers
+            #If data is not train data - ensure scalers are still trained only on train data
+            if self.flag != "train":
+                #load train data
+                train_data = pd.read_csv(_path.replace(self.flag, "train"), header=[0,1])    
+                train_data = train_data[cols_data]
+                
+                #get data variables
+                n_obs = train_data.shape[0]
+                n_features = train_data.columns.get_level_values(0).nunique()
+                n_turbines = train_data.columns.get_level_values(1).nunique()
+                
+                #reshape data into (# of observations (N), # of features (D), # of turbines (T))
+                data_reshaped = train_data.values.reshape(n_obs, n_features, n_turbines) 
+                
+                #fit each scaler on a per-turbine basis        
+                for i in range(data_reshaped.shape[-1]):
+                    self.scalers[i].fit(data_reshaped[..., i])
+
+                del train_data #free up memory -> train_data is no longer used
+                
+            else:
+                #get data variables
+                n_obs = df_data.shape[0]
+                n_features = df_data.columns.get_level_values(0).nunique()
+                n_turbines = df_data.columns.get_level_values(1).nunique()
+                
+                #reshape data into (# of observations (N), # of features (D), # of turbines (T))
+                data_reshaped = df_data.values.reshape(n_obs, n_features, n_turbines)
+                
+                #fit each scaler on a per-turbine basis        
+                for i in range(data_reshaped.shape[-1]):
+                    self.scalers[i].fit(data_reshaped[..., i])
+            
+            ####### APPLY scalers
+            #reshape data into (# of observations (N), # of features (D), # of turbines (T))
             data = df_data.values.reshape(df_data.shape[0], df_data.columns.get_level_values(0).nunique(), -1)
-            data = np.stack([self.scaler.transform(data[..., i]) for i in range(data.shape[-1])], -1) #apply the scaler for each individual turbine
+
+            #apply the scaler
+            data = np.stack([self.scalers[i].transform(data[..., i]) for i in range(data.shape[-1])], -1) #apply the scaler
         else:
             data = df_data.values.reshape(df_data.shape[0], df_data.columns.get_level_values(0).nunique(), -1)
+        
+        
     
         #select data only from the specified subset of nodes
         if self.subset is not None:
@@ -516,10 +565,7 @@ class Dataset_wind_data_graph(Dataset):
         else:
             station_names = [self._stations_inv[i] for i in stations]
         
-        
-        #################
-        ##NOTE: need to check this again...
-        #################
+        #Decide which edges to keep (depends on whether or not n_closest is specified)
         if self.n_closest is not None:
             def select_relevant_neighbors(col):
                 """for each column/node with available data (<stations>), select the 1+n_closest nodes 
@@ -589,34 +635,82 @@ class Dataset_wind_data_graph(Dataset):
     # ####NOTE: need to ensure this works as intended
     # Assumes non-graph (i.e. mainly used for the outputs...)
     #  Inputs should be either of shape [nodes, seq_len, feats] or [seq_len, feats]
-    def inverse_transform(self, data):
-        num_input_feats = data.shape[-1]
-        if num_input_feats != len(self.scaler.scale_):
-            data = np.concatenate([np.zeros([*data.shape[:-1], len(self.scaler.scale_) - data.shape[-1]]), data], -1)
-        data = self.scaler.inverse_transform(data)
+    # def inverse_transform(self, data):
+    #     #get the # of features of the provided data
+    #     num_input_feats = data.shape[-1]
+        
+    #     #if the provided data does not have same # of features as the data the scaler was trained on
+    #     if num_input_feats != len(self.scaler.scale_):
+    #         #
+    #         data = np.concatenate([np.zeros([*data.shape[:-1], len(self.scaler.scale_) - data.shape[-1]]), data], -1)
+        
+    #     #apply the inverse transform
+    #     data = self.scaler.inverse_transform(data)
 
-        if num_input_feats != len(self.scaler.scale_):
-            data = data[..., -num_input_feats:]
+    #     #ensure that padding is removed again so that only the orignial features of data is returned
+    #     if num_input_feats != len(self.scaler.scale_):
+    #         data = data[..., -num_input_feats:]
 
-        return data
+    #     return data
+    
+    
+    def inverse_transform(self, data, scaler_idx):
+        original_shape = data.shape
+        num_input_features = data.shape[-1] #pretty sure this will always be c_out
+
+        #flatten 3d input (# of time-steps, pred_len, c_out) --> (# of time steps * pred_len, c_out)
+        data_flattened = data.reshape(-1, num_input_features)
+        
+        #Add padding
+        if num_input_features != len(self.scalers[scaler_idx].scale_):
+            pad_width = len(self.scalers[scaler_idx].scale_) - num_input_features
+            data_flattened = np.concatenate([np.zeros([*data_flattened.shape[:-1], pad_width]), data_flattened], -1)
+
+        data_inv = self.scalers[scaler_idx].inverse_transform(data_flattened)
+
+        #remove the padding
+        if num_input_features != len(self.scalers[scaler_idx].scale_):
+            data_inv = data_inv[:, -num_input_features:]
+        
+        return data_inv.reshape(original_shape)
 
 
-
-#NOTE: NEED TO CHECK AGAIN
 # Custom collate function to graph samples into a batch
 def collate_graph(batch):
+    #<batch> is a list of tuples [(graph_x, graph_y, seq_x_mark, seq_y_mark), ... ]
+    # this line splits up the list of tuples into like so
+    #   graph_x = [graph_x1, graph_x2, ...]
+    #   graph_xy = [graph_y1, graph_y2, ...]
+    #   seq_x_mark = [seq_x_mark1, seq_x_mark2, ...]
+    #   seq_y_mark = [seq_y_mark1, seq_y_mark2, ...]
     graph_x, graph_y, seq_x_mark, seq_y_mark = [[d[i] for d in batch] for i in range(len(batch[0]))]
+    
+    #creates list of size batch_size - start with 0 and contiouosly add the # of nodes for
+    # each graph in graph_x. In case where all graphs has 64 nodes: [0, 64, 128, ..., 1984]
     sizes_add = np.cumsum([0, *[g['nodes'].shape[0] for g in graph_x][:-1]])
+    
     x = {
+        #combine the node and edge features across the batch
         'nodes': np.concatenate([g['nodes'] for g in graph_x], 0),
         'edges': np.concatenate([g['edges'] for g in graph_x], 0),
+        
+        #shift the sender and reciever of each graph by appropiate offset so that all indicies are unique
         'senders': np.concatenate([g['senders'] + start_i for g, start_i in zip(graph_x, sizes_add)]),
         'receivers': np.concatenate([g['receivers'] + start_i for g, start_i in zip(graph_x, sizes_add)]),
+        
+        #two lists, one containnig the number of nodes per graph, the other the # of edges per graph 
+        # both lists are of length <batch_size>
         'n_node': np.array([g['nodes'].shape[0] for g in graph_x]),
         'n_edge': np.array([g['edges'].shape[0] for g in graph_x]),
+        
+        #2D array shape (batch_size, 2) --> start and end index of each graphs nodes in the concatenated node tensor
         'graph_mapping': np.stack([sizes_add, np.cumsum([g['nodes'].shape[0] for g in graph_x])], -1),
+        
+        #batch all stations names (one per node) into a flat list (len = batch_size * # nodes)
         'station_names': np.concatenate([g['station_names'] for g in graph_x]),
     }
+    
+    #Same as x, but with graph_y
     y = {
         'nodes': np.concatenate([g['nodes'] for g in graph_y], 0),
         'edges': np.concatenate([g['edges'] for g in graph_y], 0),
@@ -628,6 +722,7 @@ def collate_graph(batch):
         'station_names': np.concatenate([g['station_names'] for g in graph_y]),
     }
 
+    #turn list of arrays into a single batched array
     seq_x_mark = np.stack(seq_x_mark, 0)
     seq_y_mark = np.stack(seq_y_mark, 0)
 
