@@ -11,9 +11,6 @@ class Exp_Basic(object):
     def _build_model(self) -> None:
         raise NotImplementedError
     
-    ####################################
-    # Modify to also make MPS available
-    ####################################
     def _acquire_device(self) -> torch.device:
         if self.args.use_mps:
             os.environ["MPS_VISIBLE_DEVICES"] = str(self.args.mps)
