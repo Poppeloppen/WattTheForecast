@@ -40,34 +40,19 @@ class Exp_Main(Exp_Basic):
             self.args.seq_len = self.args.label_len
         
         
-
     def _build_model(self) -> nn.Module:
         model_dict = {
-            #'Autoformer': Autoformer,
-            #'Transformer': Transformer,
-            #'Informer': Informer,
-            #'LogSparse': LogSparseTransformer,
             'FFTransformer': FFTransformer,
             'LSTM': LSTM,
             'MLP': MLP,
             'persistence': Persistence,
-            #'GraphTransformer': GraphTransformer,
             'GraphLSTM': GraphLSTM,
             'GraphFFTransformer': GraphFFTransformer,
-            #'GraphInformer': GraphInformer,
-            #'GraphLogSparse': GraphLogSparse,
             'GraphMLP': GraphMLP,
-            #'GraphAutoformer': GraphAutoformer,
             'GraphPersistence': GraphPersistence,
         }
 
         model = model_dict[self.args.model].Model(self.args).float()
-        if self.args.use_multi_gpu and self.args.use_gpu:
-            model = nn.DataParallel(model, device_ids=self.args.device_ids)
-            #if self.args.data == 'WindGraph':
-            #    model = DataParallelGraph(model, device_ids=self.args.device_ids)
-            #else:
-            #    model = nn.DataParallel(model, device_ids=self.args.device_ids)
 
         return model
     
@@ -112,20 +97,27 @@ class Exp_Main(Exp_Basic):
                 
                 #graph data
                 if self.args.data == "WindGraph":
+                    #convert graphs to GraphTuple
                     batch_x = data_dicts_to_graphs_tuple(batch_x, device=self.device)
                     batch_y = data_dicts_to_graphs_tuple(batch_y, device=self.device)
-                    dec_inp = batch_y
+                    dec_inp = batch_y       #decoder input starts as a copy of the target graph
                     
+                    #move time data to device
                     batch_x_mark = batch_x_mark.float().to(self.device)
                     batch_y_mark = batch_y_mark.float().to(self.device)
                     
-                    #decoder input
-                    dec_zeros = dec_inp.nodes[:, (self.args.label_len - 1):self.args.label_len, :]        # Select last value
-                    dec_zeros = dec_zeros.repeat(1, self.args.pred_len, 1).float()                        # Repeat for pred_len
-                    dec_zeros = torch.cat([dec_inp.nodes[:, :self.args.label_len, :], dec_zeros], dim=1)  # Add Placeholders
+                    #construct decoder input
+                    #1 select the last observed node feature (at label_len-1)
+                    dec_zeros = dec_inp.nodes[:, (self.args.label_len - 1):self.args.label_len, :]        
+                    #2 repeat this value for each prediction step (acts as placeholder)
+                    dec_zeros = dec_zeros.repeat(1, self.args.pred_len, 1).float()                        
+                    #3 concatenate observed part of decoder input (first label_len steps)
+                    #    with repeated last observed value to create full decoder input
+                    dec_zeros = torch.cat([dec_inp.nodes[:, :self.args.label_len, :], dec_zeros], dim=1)
                     dec_zeros = dec_zeros.float().to(self.device)
-                    dec_inp = dec_inp.replace(nodes=dec_zeros)
+                    dec_inp = dec_inp.replace(nodes=dec_zeros) #update the dec_inp to be the data with placeholder
 
+                    #select last `dec_in` features for decoder and `enc_in` features for encoder
                     dec_inp = dec_inp.replace(nodes=dec_inp.nodes[:, :, -self.args.dec_in:])
                     batch_x = batch_x.replace(nodes=batch_x.nodes[:, :, -self.args.enc_in:])
                     
@@ -153,26 +145,22 @@ class Exp_Main(Exp_Basic):
                     batch_x = batch_x[:, :, -self.args.enc_in:]
                     
 
-                if self.args.data == "WindGraph" and self.args.use_multi_gpu:
-                    raise NotImplementedError("multi_gpu has yet to be implemented")
-
-
-                ####NOT sure what this does...
+                #Extract only outputs (models with attention mechanism also return attn from the forward functoin)
                 if self.args.output_attention:
                     outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
                 else:
                     outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
 
-                #Uni- or Multivariate
+                #Uni- or Multivariate (extra guard-railing -> should not be neccessary, assuming model only ouput c_out features)
                 if 'M' in self.args.features:
-                    f_dim = -self.args.c_out
+                    f_dim = -self.args.c_out #select last c_out features of the model output 
                 else:
-                    f_dim = 0
+                    f_dim = 0 #there is only one feature in case "S"
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
                 
                 
-                #Final wrangling
+                #Extract true predictions (last pred_len values of batch_y)
                 if self.args.data == 'WindGraph':
                     batch_y = batch_y.nodes[:, -self.args.pred_len:, f_dim:].to(self.device)
                 else:
@@ -182,7 +170,11 @@ class Exp_Main(Exp_Basic):
                 pred = outputs.detach().cpu()
                 true = batch_y.detach().cpu()
 
-                #compute loss
+                #compute loss (MSE loss) -> same as ((pred - true)**2).mean()
+                # that is, average squared dist between pred and true summed over
+                # all nodes             (# of turbines)
+                # all prediction steps  (pred_len)
+                # all output features   (c_out)
                 loss = criterion(pred, true)
                 total_loss.append(loss)
                 
@@ -206,24 +198,27 @@ class Exp_Main(Exp_Basic):
 
             self.test('persistence_' + str(self.args.pred_len), test=0, save_flag=True)
         
+            print("Persistence model - skipping training")
             print('vali_loss: ', vali_loss)
             print('test_loss: ', test_loss)
-            assert False
+            return False #assert False
         
         
         self.vali_losses = [] #store validation lossses
         
         
-        train_steps = len(train_loader)
-        early_stopping = EarlyStopping(patience=self.args.patience,
-                                       verbose=True,
-                                       checkpoint=self.args.checkpoint_flag, 
-                                       model_setup=self.args)
-        
         #Ensure there exists a dir for storing checkpoints (if specified)
         path = os.path.join(self.args.checkpoints, setting)
         if not os.path.exists(path) and self.args.checkpoint_flag:
             os.makedirs(path)
+        
+    
+        train_steps = len(train_loader)
+        early_stopping = EarlyStopping(patience=self.args.patience,
+                                       verbose=True,
+                                       checkpoint=self.args.checkpoint_flag, 
+                                       model_setup=self.args)    
+        
         
         #Tries to load best model from checkpoint,
         if self.args.checkpoint_flag:
@@ -267,12 +262,10 @@ class Exp_Main(Exp_Basic):
                 teacher_forcing_ratio = max(0., teacher_forcing_ratio)
                 print("teacher_forcing_ratio: ", teacher_forcing_ratio)
         
-
             #type4 lr scheduling is updated more frequently
             if self.args.lradj != 'type4':
                 adjust_learning_rate(model_optim, epoch+1, self.args)
-            
-            
+                
             train_loss = []
             
             self.model.train()
@@ -284,7 +277,6 @@ class Exp_Main(Exp_Basic):
                     adjust_learning_rate(model_optim, total_num_iter + 1, self.args)
                     total_num_iter += 1
             
-                #NOTE: need to implement
                 if isinstance(batch_y, dict): #this is only true in case of WindGraph data
                     batch_x = data_dicts_to_graphs_tuple(batch_x, device=self.device)
                     batch_y = data_dicts_to_graphs_tuple(batch_y, device=self.device)
@@ -323,14 +315,7 @@ class Exp_Main(Exp_Basic):
                     dec_inp = dec_inp[:, :, -self.args.dec_in:]
                     batch_x = batch_x[:, :, -self.args.enc_in:]
                 
-                
-                
-                
-                #NOTE: need to implement
-                if self.args.data == "WindGraph" and self.args.use_multi_gpu:
-                    raise NotImplementedError("multi_gpu has yet to be implemented")
-                
-                
+                                
                 if self.args.output_attention:
                     outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark,
                                          teacher_forcing_ratio=teacher_forcing_ratio, batch_y=batch_y)[0]
@@ -356,7 +341,7 @@ class Exp_Main(Exp_Basic):
                 loss.backward()
                 model_optim.step()
                 
-                if (i + 1) % 100 == 0 and self.args.verbose == 1:
+                if (i + 1) % 10 == 0 and self.args.verbose == 1:
                     print("\titers: {0}/{1}, epoch: {2} | loss: {3:.7f}".format(i + 1, num_iters, epoch + 1, np.average(train_loss)))
                 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
@@ -419,12 +404,15 @@ class Exp_Main(Exp_Basic):
                 print("Early stopping")
                 break
             
-        #NOTE: need to implement this in full
-        #if self.args.checkpoint_flag:
-        #    best_model_path = path + "/" + "checkpoint.pth"
-        #    self.model.load_state_dict(torch.load(best_model_path))
+        #after training, load the best model
+        if self.args.checkpoint_flag:
+           best_model_path = path + "/" + "checkpoint.pth"
+           self.model.load_state_dict(torch.load(best_model_path))
+        
         if self.args.use_wandb:
+            wandb.unwatch(self.model)
             wandb.finish()
+            
         return self.model
     
     
@@ -477,8 +465,8 @@ class Exp_Main(Exp_Basic):
     
         
         
-    def test(self, setting: ...,
-             test: ... = 1,
+    def test(self, setting: str,
+             test: int = 1,
              base_dir: str = '',
              save_dir: str | None = None,
              ignore_paths: bool = False,
@@ -486,16 +474,34 @@ class Exp_Main(Exp_Basic):
              ) -> dict[str, ]:
         
         test_data, test_loader = self._get_data(flag='test')
+        
+        #if save_dir is not specified, use base_dir as default
         if save_dir is None:
             save_dir = base_dir
         
         
-        ###### IMPLEMENT LATER
-        #if test:
-        #    print("loading model")
-        #    if len(base_dir) == 0:
-        #        load_path = os.path.normpath()
+        #Load and test model if <test> flag is enabled
+        if test:
+            print('loading model')
+            
+            #construct path to checkpoint file
+            if len(base_dir) == 0:
+                load_path = os.path.normpath(os.path.join('./checkpoints/' + setting, 'checkpoint.pth'))
+            else:
+                load_path = os.path.normpath(os.path.join(base_dir + 'checkpoints/' + setting, 'checkpoint.pth'))
+            
+            #validate the current arguments against the saved model config
+            load_check_flag = self.load_check(path=os.path.normpath(os.path.join(os.path.dirname(load_path),
+                                                                                 'model_setup.pickle')),
+                                              ignore_paths=ignore_paths)
+            
+            #load model weights if checkpoints exists and the config is valid (as per previous check)
+            if os.path.exists(load_path) and load_check_flag:
+                self.model.load_state_dict(torch.load(load_path))
+            else:
+                print('Could not load best model')
         
+                
         #Ensure that a dir exists for storing results
         if save_flag:
             if len(save_dir) == 0:
@@ -504,6 +510,7 @@ class Exp_Main(Exp_Basic):
                 folder_path = save_dir + 'test_results/' + setting + '/'        
             if not os.path.exists(folder_path):
                 os.makedirs(folder_path)
+        
         
         preds = []
         trues = []
@@ -552,27 +559,27 @@ class Exp_Main(Exp_Basic):
                     batch_x = batch_x[:, :, -self.args.enc_in:]
                     
 
-                if self.args.data == "WindGraph" and self.args.use_multi_gpu:
-                    raise NotImplementedError("multi_gpu has yet to be implemented")
-
-                ####NOT sure what this does...
+                #Only store outputs (transformer models can also ouput attention, we don't store that)
                 if self.args.output_attention:
                     outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
                 else:
                     outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
-                #Uni- or Multivariate
+
+                #Select ouput features
                 if 'M' in self.args.features:
                     f_dim = -self.args.c_out
                 else:
                     f_dim = 0
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
                 
-                #Final wrangling
+                
+                #Extract true values
                 if self.args.data == 'WindGraph':
                     batch_y = batch_y.nodes[:, -self.args.pred_len:, f_dim:].to(self.device)
                 else:
                     batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+
 
                 #Get predictions and true values back to cpu
                 outputs = outputs.detach().cpu().numpy()
@@ -607,51 +614,49 @@ class Exp_Main(Exp_Basic):
         print('test shape:', preds.shape, trues.shape)
         
         # For saving NOTE: seems redundant --> similar already implemented earlier...
-        #if save_flag:
-        #    if len(save_dir) == 0:
-        #        folder_path = './results/' + setting + '/'
-        #    else:
-        #        folder_path = save_dir + 'results/' + setting + '/'
-        #    if not os.path.exists(folder_path):
-        #        os.makedirs(folder_path)
+        if save_flag:
+           if len(save_dir) == 0:
+               folder_path = './results/' + setting + '/'
+           else:
+               folder_path = save_dir + 'results/' + setting + '/'
+           if not os.path.exists(folder_path):
+               os.makedirs(folder_path)
+        
         
         mae, mse, rmse, mape, mspe = metric(preds, trues)
-        
-        #NOTE: need to get this (inverse_transform) to work
-        #print("preds:", preds)
-        #print("preds shape:", preds.shape)
-        #print("trues:", trues)
-        #print("trues shape:", trues.shape)
-        #preds_un = test_data.inverse_transform(preds)
-        #trues_un = test_data.inverse_transform(trues)
-        #print(preds_un)
-        #print(trues_un)
-        #mae_un, mse_un, rmse_un, mape_un, mspe_un = metric(preds_un, trues_un)
-        
+            
+                
         losses = {
             'mae_sc': mae,
             'mse_sc': mse,
             'rmse_sc': rmse,
             'mape_sc': mape,
             'mspe_sc': mspe,
-            '': '\n\n',
-            #'mae_un': mae_un,
-            #'mse_un': mse_un,
-            #'rmse_un': rmse_un,
-            #'mape_un': mape_un,
-            #'mspe_un': mspe_un,
         }
         
-        if self.args.data == "WindGraph" and self.args.use_multi_gpu:
-            for node in np.unique(node_ids):
+        
+        if self.args.data == "WindGraph":
+            all_unscaled_preds = []    
+            all_unscaled_trues = []           
+            
+            for i, node in enumerate(np.unique(node_ids)):
+                
+                #Get the prediction and true values associated with the specific turbine
                 indxs_i = np.where(node_ids == node)[0]
+                preds_i = preds[indxs_i]
+                trues_i = trues[indxs_i]
 
-                mae_i, mse_i, rmse_i, mape_i, mspe_i = metric(preds[indxs_i], trues[indxs_i])
+                #compute metrics of scaled values
+                mae_i, mse_i, rmse_i, mape_i, mspe_i = metric(preds_i, trues_i)
 
-                preds_un_i = test_data.inverse_transform(preds[indxs_i])
-                trues_un_i = test_data.inverse_transform(trues[indxs_i])
-
-                mae_un_i, mse_un_i, rmse_un_i, mape_un_i, mspe_un_i = metric(preds_un_i, trues_un_i)
+                #Unscale the values and save them 
+                preds_unscaled_i = test_data.inverse_transform(preds_i, i)
+                trues_unscaled_i = test_data.inverse_transform(trues_i, i)
+                all_unscaled_preds.append(preds_unscaled_i)
+                all_unscaled_trues.append(trues_unscaled_i)
+                
+                #compute metrics of un-scaled values
+                mae_un_i, mse_un_i, rmse_un_i, mape_un_i, mspe_un_i = metric(preds_unscaled_i, trues_unscaled_i)
 
                 losses_i = {
                     '': '\n\n',
@@ -668,6 +673,23 @@ class Exp_Main(Exp_Basic):
                 }
                 losses.update(losses_i)
         
+            #Combine all unscaled values
+            preds_unscaled = np.vstack(all_unscaled_preds)
+            trues_unscaled = np.vstack(all_unscaled_trues)
+            
+            #compute loss of unscaled values
+            mae_un, mse_un, rmse_un, mape_un, mspe_un = metric(preds_unscaled, trues_unscaled)
+
+            losses_un = {
+                "mae_un" : mae_un,
+                "mse_un" : mse_un,
+                "rmse_un" : rmse_un,
+                "mape_un" : mape_un,
+                "mspe_un" : mspe_un,
+            }
+
+            losses.update(losses_un)
+        
         
         if not save_flag:
             return losses
@@ -683,11 +705,11 @@ class Exp_Main(Exp_Basic):
         np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
         np.save(folder_path + 'pred.npy', preds)
         np.save(folder_path + 'true.npy', trues)
-        #np.save(folder_path + 'pred_un.npy', preds_un)
-        #np.save(folder_path + 'true_un.npy', trues_un)
+        np.save(folder_path + 'pred_un.npy', preds_unscaled)
+        np.save(folder_path + 'true_un.npy', trues_unscaled)
         
-        if self.args.data == "WindGraph" and self.args.use_multi_gpu:
-            raise NotImplementedError("WindGraph data and multi_gpu has yet to be implemented")
+        if self.args.data == "WindGraph":
+            np.save(folder_path + 'station_ids.npy', node_ids)
         
         with open(folder_path + 'metrics.txt', 'w') as f:
             f.write('mse: ' + str(mse) + '\n')
