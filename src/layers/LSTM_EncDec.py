@@ -12,8 +12,11 @@ class Encoder(nn.Module):
         self.num_layers = num_layers
         self.output_hidden = output_hidden
 
-        self.lstm = nn.LSTM(input_size=d_model, hidden_size=d_model, num_layers=num_layers,
-                            dropout=dropout, batch_first=True)
+        self.lstm = nn.LSTM(input_size=d_model, 
+                            hidden_size=d_model,
+                            num_layers=num_layers,
+                            dropout=dropout if num_layers > 1 else 0., 
+                            batch_first=True)
 
     def forward(self, x, **_):
         lstm_out, self.hidden = self.lstm(x)    # Assumes input as [B, L, d]
