@@ -29,23 +29,14 @@ DEC_IN=8
 C_OUT=1
 
 #Model defn.
-D_MODELS=(64 64 32)   #NOTE: should be specified directly
-#N_HEADS=None
+D_MODELS=(64 64 32)
 E_LAYERS=2
 #D_LAYERS=              #NOTE: Don't think this is every used in the GNN models
 GNN_LAYERS=2
 D_FFS=(256 256 128)     #NOTE: Not sure this is the right parameter...
-#FACTOR=3               #NOTE: Not relevant for MLP
 DROPOUT=0.05
 EMBED=fixed             #NOTE: only embedding implemented
 ACTIVATION=relu
-#QK_KER=                #NOTE: Not relevant for MLP
-#V_CONV=                #NOTE: Not relevant for MLP
-#TOP_KEYS=              #NOTE: Not relevant for MLP
-#KERNEL_SIZE=           #NOTE: Not relevant for MLP
-#TRAIN_STRAT_LSTM=      #NOTE: Not relevant for MLP
-#NORM_OUT=              #NOTE: Not relevant for MLP
-#NUM_DECOMP=            #NOTE: Not relevant for MLP
 MLP_OUT=0               #NOTE: double check that we do not want this - 0 is default tho
 
 #Optimization
@@ -109,116 +100,3 @@ do
     --use_mps "$USE_MPS" \
 
 done
-
-
-# # 1-step 
-# python -u run.py \
-#     --model_id "${PRED_LEN}Step" \
-#     --model "$MODEL" \
-#     --plot_flag "$PLOT_FLAG" \
-#     --use_wandb "$USE_WANDB" \
-#     --data "$DATA" \
-#     --dataset_size "$DATASET_SIZE" \
-#     --dataset_features "$DATASET_FEATURES" \
-#     --features "$FEATURES" \
-#     --seq_len "$SEQ_LEN" \
-#     --label_len "$LABEL_LEN" \
-#     --pred_len "$PRED_LEN" \
-#     --enc_in "$ENC_IN" \
-#     --dec_in "$DEC_IN" \
-#     --c_out "$C_OUT" \
-#     --d_model "$d_model" \
-#     --n_heads "$N_HEADS" \
-#     --e_layers "$E_LAYERS" \
-#     --d_layers "$D_LAYERS" \
-#     --gnn_layers "$GNN_LAYERS" \
-#     --d_ff "$D_FF" \
-#     --factor "$FACTOR" \
-#     --dropout "$DROPOUT" \
-#     --embed "$EMBED" \
-#     --activation "$ACTIVATION" \
-#     --mlp_out "$MLP_OUT" \
-#     --itr "$ITR" \
-#     --train_epochs "$EPOCHS" \
-#     --batch_size "$BATCH_SIZE" \
-#     --patience "$PATIENCE" \
-#     --learning_rate "$LEARNING_RATE" \
-#     --lr_decay_rate "$LR_DECAY_RATE" \
-#     --lradj "$LRADJ" \
-#     --use_gpu "$USE_GPU" \
-#     --use_mps "$USE_MPS" \
-
-
-# # 4-step
-#     -
-#     -
-
-
-# # 24-step
-#     -
-#     -
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# #GENERAL configurations
-# DATASET_SIZE=full_dataset
-# DATASET_FEATURES=subset_features
-# FEATURES=M
-# EMBED=fixed
-# ENC_IN=8
-# DEC_IN=8
-# PLOT_FLAG=0
-# USE_WANDB=0
-# N_CLOSEST=4
-# ITR=1
-# #TEST_DIR=1_step
-
-
-# #MODEL specific MLP
-# SEQ_LEN=32
-# LABEL_LEN=...
-# PRED_LEN=1
-# ACTIVATION=relu
-
-
-# #MODEL specific FFTransformer
-# ACTIVATION=gelu
-
-
-# for MODEL in GraphMLP #GraphLSTM GraphFFTransformer
-# do
-#     echo "Running model: $MODEL"
-#     python -u run.py \
-#         --model_id "$PRED_LEN-step" \
-#         --model "$MODEL" \
-#         --embed "$EMBED" \
-#         --features "$FEATURES" \
-#         --data WindGraph \
-#         --dataset_size "$DATASET_SIZE" \
-#         --dataset_features "$DATASET_FEATURES" \
-#         --enc_in "$ENC_IN" \
-#         --dec_in "$DEC_IN" \
-#         --plot_flag "$PLOT_FLAG" \
-#         --use_wandb "$USE_WANDB" \
-#         --n_closest "$N_CLOSEST" \
-#         --itr "$ITR"
-#         #--test_dir "$TEST_DIR" \
-# done
