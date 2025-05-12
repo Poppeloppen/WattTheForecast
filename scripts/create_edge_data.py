@@ -12,7 +12,7 @@ from src.data.loading import(
 )
 
 
-CREATE_EDGE_DATA_FOR_SAMPLE_DATASET = False
+CREATE_EDGE_DATA_FOR_SAMPLE_DATASET = True
 
 #Path from where to load the windmill data
 WINDMILL_DATA_BASE_PATH = "../data/interim/"

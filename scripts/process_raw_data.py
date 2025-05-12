@@ -44,7 +44,7 @@ from src.data.processing import (
 ######################
 
 #CREATE SMALL VERSION OF DATA?
-CREATE_SUBSET_DATA = False #if True - only store weather data for one cell AND only use first 31 days worth of data
+CREATE_SUBSET_DATA = True #if True - only store weather data for one cell
 
 
 # Paths for storing the interim data
@@ -60,7 +60,7 @@ else:
 # Only use windmills within the weather observation grid cells specified here:
 if CREATE_SUBSET_DATA:  
     WEATHER_OBS_CELLIDS_OF_INTEREST = [ #could be useful to inspect map in ../notbooks/init_EDA.ipynb
-        "10km_629_45",
+        "10km_628_46",
     ]
 else:
     WEATHER_OBS_CELLIDS_OF_INTEREST = [ #could be useful to inspect map in ../notbooks/init_EDA.ipynb
@@ -252,7 +252,7 @@ def main():
         ###########
         print(f"Processing weather data from {year}")
         all_dates = get_available_weather_obs_dates(year=year)
-        all_dates = all_dates if not CREATE_SUBSET_DATA else all_dates[:31]
+        #all_dates = all_dates if not CREATE_SUBSET_DATA else all_dates[:31]
         
         all_weather_gdfs = []
         

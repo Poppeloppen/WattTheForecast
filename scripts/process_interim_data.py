@@ -18,7 +18,7 @@ from src.data.loading import (
 )
 
 #Flag: should the processing happen to the small subset dataset (only one weather cell AND 31 days)
-ONLY_PROCESS_SMALL_SUBSET_DATA = False
+ONLY_PROCESS_SMALL_SUBSET_DATA = True
 
 
 ONE_FEATURE = [
