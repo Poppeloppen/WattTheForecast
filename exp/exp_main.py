@@ -224,7 +224,7 @@ class Exp_Main(Exp_Basic):
         if self.args.checkpoint_flag:
             load_path = os.path.join(path, "checkpoint.pth")
             if os.path.exists(load_path) and self.load_check(path=os.path.join(path, 'model_setup.pickle')):
-                self.model.load_state_dict(torch.load(load_path))
+                self.model.load_state_dict(torch.load(load_path, weights_only=True))
                 
                 epoch_pickle_path = os.path.join('./checkpoints/' + setting, 'epoch_loss.pickle')
                 with open(epoch_pickle_path, "rb") as f:
@@ -248,11 +248,15 @@ class Exp_Main(Exp_Basic):
         
         teacher_forcing_ratio = 0.8     # For LSTM Enc-Dec training (not used for others).
         total_num_iter = 0
-        time_now = time.time()
         
         if self.args.use_wandb:
             wandb.init(project="WattTheForecast", name=setting, config=self.args)
             wandb.watch(self.model, log="all", log_freq=10)
+        
+        #Track train time and memory usage
+        training_start_time = time.time()
+        if self.device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats(device=self.device)
         
         for epoch in range(start_epoch, self.args.train_epochs):
             print(epoch)
@@ -403,11 +407,31 @@ class Exp_Main(Exp_Basic):
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
-            
+        
+        
+        #Get the training time and max memory usage and store them
+        training_end_time = time.time()
+        total_training_time = training_end_time - training_start_time
+        print("TOTAL TRAIN TIME:", total_training_time)
+        
+        if self.device.type == "cuda":
+            max_memory = torch.cuda.max_memory_allocated(device=self.device) / (1024 ** 2)
+            print("MAX MEMORY USAGE:", max_memory)   
+        
+        stats_path = os.path.join(path, "training_stats.txt")
+        with open(stats_path, "w") as f:
+            f.write(f"Total training time (s): {total_training_time}\n")
+            if self.device.type == "cuda":
+                f.write(f"Peak GPU memory usage (MB): {max_memory}")
+            else:
+                f.write(f"Peak GPU memory usage (MB): None - need to train model using CUDA to get this stat")
+        
+        
+        
         #after training, load the best model
         if self.args.checkpoint_flag:
            best_model_path = path + "/" + "checkpoint.pth"
-           self.model.load_state_dict(torch.load(best_model_path))
+           self.model.load_state_dict(torch.load(best_model_path, weights_only=True))
         
         if self.args.use_wandb:
             wandb.unwatch(self.model)
@@ -497,7 +521,7 @@ class Exp_Main(Exp_Basic):
             
             #load model weights if checkpoints exists and the config is valid (as per previous check)
             if os.path.exists(load_path) and load_check_flag:
-                self.model.load_state_dict(torch.load(load_path))
+                self.model.load_state_dict(torch.load(load_path, weights_only=True))
             else:
                 print('Could not load best model')
         
