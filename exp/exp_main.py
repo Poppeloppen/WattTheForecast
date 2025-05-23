@@ -542,6 +542,11 @@ class Exp_Main(Exp_Basic):
         
         self.model.eval()
         
+        inference_start_time = time.time()
+        if self.device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats(device=self.device)
+        
+        
         with torch.no_grad():
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
                 if self.args.data == "WindGraph":
@@ -658,6 +663,22 @@ class Exp_Main(Exp_Basic):
             'mspe_sc': mspe,
         }
         
+        #Get the inference time and max memory usage and store them
+        inference_end_time = time.time()
+        total_inference_time = inference_end_time - inference_start_time
+        print("TOTAL INFERENCE TIME:", total_inference_time)
+        
+        if self.device.type == "cuda":
+            max_memory = torch.cuda.max_memory_allocated(device=self.device) / (1024 ** 2)
+            print("MAX MEMORY USAGE (inference):", max_memory)   
+        
+        stats_path = os.path.join(folder_path, "inference_stats.txt")
+        with open(stats_path, "w") as f:
+            f.write(f"Total inference time (s): {total_inference_time}\n")
+            if self.device.type == "cuda":
+                f.write(f"Peak GPU memory usage (MB): {max_memory}")
+            else:
+                f.write(f"Peak GPU memory usage (MB): None - need to train model using CUDA to get this stat")
         
         if self.args.data == "WindGraph":
             all_unscaled_preds = []    
